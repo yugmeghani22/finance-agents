@@ -1,5 +1,7 @@
 # Liquidity field definitions
 
+v1 measures near-term liquidity: cash, debt, committed backup facilities and the next maturity.
+
 These rules apply to `answer_key_liquidity.csv` and to any agent that extracts the
 same fields. When the answer key and an agent disagree, check both against this file
 first.
@@ -26,14 +28,15 @@ first.
 | `cash_and_equivalents` | Cash and cash equivalents as reported. |
 | `total_debt` | Short-term borrowings + long-term debt. **Exclude customer deposits.** |
 | `net_debt` | `total_debt` − `cash_and_equivalents`. Show the math in `notes`. |
-| `net_leverage` | Only if the company itself states a debt/EBITDA-style leverage figure. Regulatory capital ratios (Tier 1 leverage, supplementary leverage ratio, CET1) **don't count**. Otherwise `not_disclosed`. |
 | `revolver_size` | Committed bank credit facilities named as such in the filing; exclude secured/securitization facilities and subsidiary credit lines. |
 | `revolver_undrawn` | Undrawn amount of the same facilities as `revolver_size`. |
 | `nearest_maturity_date` | Year of the earliest annual long-term debt maturity bucket disclosed (`YYYY`). |
 | `nearest_maturity_amount` | Amount in that bucket, in $ millions. `as_of` is the date of the filing that gives the schedule. |
-| `covenant_terms` | Text summary of the financial covenants on the credit facility. |
 
-## Removed for v1
+## Out of scope for v1
 
-- `buyback_remaining`: the remaining share-repurchase authorization is usually
-  disclosed in 10-Q Part II, Item 2, which the data layer doesn't extract yet.
+- `net_leverage`: banks don't report debt/EBITDA-style leverage, so it would be
+  mostly `not_disclosed`.
+- `covenant_terms`: free text, hard to score objectively.
+- `buyback_remaining`: the data layer doesn't extract 10-Q Part II, Item 2, where
+  remaining repurchase authorization is disclosed.
