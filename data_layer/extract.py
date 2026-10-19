@@ -56,11 +56,26 @@ XREF_HINT = re.compile(r"MD&A|management.s discussion", re.I)
 
 NOISE_LINE = re.compile(r"^\s*(table of contents|\d{1,3}|page \d+)\s*$", re.I)
 
+# Fallbacks: when a footnote is missing, collect the paragraphs elsewhere in
+# the filing (other footnotes, MD&A, market-risk item) that discuss the topic.
+FALLBACK_TERMS = {
+    "debt": re.compile(
+        r"long-term debt|short-term (debt|borrowings)|\bborrowings\b|senior (unsecured )?notes"
+        r"|commercial paper|unsecured debt|debt (issuance|maturit|outstanding)|credit facilit",
+        re.I,
+    ),
+    "derivatives": re.compile(r"derivative|hedg|interest rate swap", re.I),
+}
+FALLBACK_SKIP_HEADINGS = re.compile(r"glossary|forward-looking|cautionary", re.I)
+FALLBACK_MIN_WORDS = 8
+FALLBACK_MAX_WORDS = 4000
+
 
 @dataclass
 class Section:
     text: str | None
     source: str  # where in the filing it came from, or why it is missing
+    fallback: bool = False  # True when assembled from other parts of the filing
 
     @property
     def found(self) -> bool:
@@ -208,9 +223,60 @@ def extract_sections(report, form: str) -> dict[str, Section]:
     else:
         out["market_risk"] = Section(mr, mr_key)
 
-    out["debt"] = find_note(report, DEBT_NOTE, NOT_DEBT_NOTE)
-    out["derivatives"] = find_note(report, DERIVATIVES_NOTE)
+    sources = [(mdna_key, mdna), (mr_key, mr)]
+    for name, note in (("debt", find_note(report, DEBT_NOTE, NOT_DEBT_NOTE)),
+                       ("derivatives", find_note(report, DERIVATIVES_NOTE))):
+        out[name] = note if note.found else fallback_excerpts(report, name, note.source, sources)
     return out
+
+
+def fallback_excerpts(report, section: str, missing_reason: str,
+                      item_sources: list[tuple[str, str | None]]) -> Section:
+    """Paragraphs from other footnotes and items that discuss `section`.
+
+    Every excerpt starts with a "[FALLBACK ...]" tag naming where it came
+    from, so a chunk stays traceable even when cited on its own. Footnotes
+    come first because they carry the hard numbers."""
+    terms = FALLBACK_TERMS[section]
+    excerpts: list[tuple[str, str]] = []
+    try:
+        notes = list(report.notes)
+    except Exception:
+        notes = []
+    for note in notes:
+        for p in paragraphs(clean(note.text or "")):
+            if word_count(p) >= FALLBACK_MIN_WORDS and terms.search(p):
+                excerpts.append((f"Note: {note.title}", p))
+    for key, text in item_sources:
+        if not text:
+            continue
+        heading = None
+        for p in paragraphs(text):
+            if is_heading(p):
+                heading = p
+                continue
+            if heading and FALLBACK_SKIP_HEADINGS.search(heading):
+                continue
+            if word_count(p) >= FALLBACK_MIN_WORDS and terms.search(p):
+                excerpts.append((f"{key} > {heading}" if heading else key, p))
+
+    if not excerpts:
+        return Section(None, f"{missing_reason}; no discussion of it found elsewhere in the filing")
+
+    kept, total, truncated = [], 0, False
+    for where, p in excerpts:
+        n = word_count(p)
+        if kept and total + n > FALLBACK_MAX_WORDS:
+            truncated = True
+            break
+        kept.append((where, p))
+        total += n
+    locations = list(dict.fromkeys(where for where, _ in kept))
+    text = "\n\n".join(f"[FALLBACK - from {where}] {p}" for where, p in kept)
+    source = f"FALLBACK ({missing_reason}) - excerpts from: " + "; ".join(locations)
+    if truncated:
+        source += f" (first {FALLBACK_MAX_WORDS:,} words of {len(excerpts)} matching paragraphs)"
+    return Section(text, source, fallback=True)
 
 
 def chunk(text: str, target_words: int = 1500) -> list[str]:

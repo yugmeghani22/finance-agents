@@ -2,8 +2,13 @@
 
 Layout:
     data/cache/{ticker}/{form}_{filing_date}/
-        manifest.json      filing metadata + found/missing status per section
-        {section}.json     list of chunk records (only for sections found)
+        manifest.json      filing metadata + status per section:
+                           found / fallback / missing
+        {section}.json     list of chunk records (found and fallback sections)
+
+A "fallback" section had no dedicated footnote, so it holds excerpts from
+other parts of the filing. Its chunks carry "fallback": true and each
+paragraph is tagged with where it came from.
 """
 
 import json
@@ -48,7 +53,8 @@ def read_manifest(folder: Path) -> dict:
 
 def load_sections(ticker: str, form: str, section: str) -> list[dict]:
     """Chunks for one section of the latest cached filing of `form`.
-    Returns [] when the section was recorded as missing or nothing is cached."""
+    Returns [] when the section was recorded as missing or nothing is cached.
+    Check each chunk's "fallback" flag before treating it as a dedicated footnote."""
     if section not in SECTIONS:
         raise ValueError(f"unknown section {section!r}; expected one of {SECTIONS}")
     dirs = filing_dirs(ticker, form)

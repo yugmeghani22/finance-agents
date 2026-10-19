@@ -84,12 +84,13 @@ def fetch_filing(ticker: str, form: str, refresh: bool = False) -> str:
                 "section": name,
                 "chunk_index": i,
                 "source": sec.source,
+                "fallback": sec.fallback,
                 "text": text,
             }
             for i, text in enumerate(pieces, start=1)
         ]
         manifest["sections"][name] = {
-            "status": "found",
+            "status": "fallback" if sec.fallback else "found",
             "source": sec.source,
             "words": word_count(sec.text),
             "chunks": len(pieces),

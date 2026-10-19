@@ -12,6 +12,8 @@ COLUMNS = ["Ticker", "Form", "Filed"] + SECTIONS
 def cell(info: dict) -> str:
     if info["status"] == "missing":
         return "MISSING"
+    if info["status"] == "fallback":
+        return f"{info['words']:,}w FB"
     return f"{info['words']:,}w"
 
 
@@ -29,6 +31,7 @@ def main() -> None:
     print(line.format(*["-" * w for w in widths]))
     for r in rows:
         print(line.format(*r))
+    print("\nFB = fallback: no dedicated footnote; excerpts gathered from other parts of the filing.")
 
     print("\nWhy sections are missing / where found ones came from:")
     for ticker in TICKERS:
