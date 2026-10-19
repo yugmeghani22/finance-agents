@@ -5,7 +5,7 @@ For every row of evals/answer_key_liquidity.csv:
   quote_in_chunk   evidence_quote appears verbatim in the cited cached chunk
   quote_in_filing  the quote appears in the original SEC filing text
   value_in_quote   draft_value appears in the quote after unit conversion
-  math_check       net_debt = total_debt - cash; revolver_undrawn <= revolver_size
+  math_check       net_debt = total_debt - cash; debt_due_within_12m <= total_debt
   as_of_check      as_of equals the cited filing's period of report
 
 Each row is also cross-checked against the filing's XBRL facts for the same
@@ -60,7 +60,6 @@ ROW_SPAN_CHARS = 400  # rendered characters one table row's cells may span
 FRAGMENT_BLOCK_TAGS = ["p", "div", "td", "th", "tr", "li", "br", "table", "h1", "h2", "h3", "h4", "h5", "h6"]
 
 NUMBER = re.compile(r"\(?\$?\s?(\d[\d,]*(?:\.\d+)?)\)?(?:\s*(billion|million))?", re.I)
-NOTHING_DRAWN = re.compile(r"\bno (amount|amounts|borrowings)\b.*\b(drawn|outstanding|under)\b|\bundrawn\b", re.I)
 
 
 # ------------------------------------------------------------------ loading
@@ -213,7 +212,7 @@ def _find_in_filings(part: str, sources: list[dict]) -> str | None:
     return None
 
 
-def check_value_in_quote(row, chunks, key_rows) -> tuple[str, str, str]:
+def check_value_in_quote(row, chunks) -> tuple[str, str, str]:
     """Returns (status, detail, matched text to highlight)."""
     draft = row["draft_value"]
     target = parse_draft(draft)
@@ -222,19 +221,6 @@ def check_value_in_quote(row, chunks, key_rows) -> tuple[str, str, str]:
     if not row["_quote_parts"]:
         return NA, "no quote (derived value; see math_check)", ""
     quote = row["evidence_quote"]
-
-    # Undrawn = size when the quote says nothing is drawn.
-    if row["field"] == "revolver_undrawn" and NOTHING_DRAWN.search(quote):
-        size = parse_draft(key_rows.get((row["ticker"], "revolver_size"), {}).get("draft_value", ""))
-        if size is not None and size == target:
-            return PASS, "quote says nothing drawn; undrawn = revolver_size", ""
-
-    # A maturity year can sit anywhere, including a table row's label cell.
-    if row["field"] == "nearest_maturity_date":
-        m = re.search(rf"\b{int(target)}\b", quote)
-        if m:
-            return PASS, f"year {m.group(0)} in quote", m.group(0)
-        return FAIL, f"year {draft} not in quote", ""
 
     chunk_text = "\n\n".join(chunks[i]["text"] for i in row["_ids"] if i in chunks)
     # 1. A single number in the quote (prose "billion"/"million" or table units).
@@ -288,13 +274,13 @@ def check_math(row, key_rows) -> tuple[str, str]:
         if net == debt - cash:
             return PASS, f"{debt:,.0f} - {cash:,.0f} = {net:,.0f}"
         return FAIL, f"{debt:,.0f} - {cash:,.0f} = {debt - cash:,.0f}, not {net:,.0f}"
-    if row["field"] in ("revolver_undrawn", "revolver_size"):
-        undrawn, size = val("revolver_undrawn"), val("revolver_size")
-        if None in (undrawn, size):
-            return NA, "revolver values not numeric"
-        if undrawn <= size:
-            return PASS, f"undrawn {undrawn:,.0f} <= size {size:,.0f}"
-        return FAIL, f"undrawn {undrawn:,.0f} > size {size:,.0f}"
+    if row["field"] == "debt_due_within_12m":
+        due, debt = val("debt_due_within_12m"), val("total_debt")
+        if None in (due, debt):
+            return NA, "debt_due_within_12m or total_debt is not numeric"
+        if 0 <= due <= debt:
+            return PASS, f"due within 12m {due:,.0f} <= total_debt {debt:,.0f}"
+        return FAIL, f"due within 12m {due:,.0f} is not between 0 and total_debt {debt:,.0f}"
     return NA, ""
 
 
@@ -404,7 +390,7 @@ def verify() -> list[dict]:
         detail = {}
         status["quote_in_chunk"], detail["quote_in_chunk"] = check_quote_in_chunk(row, chunks)
         status["quote_in_filing"], detail["quote_in_filing"] = check_quote_in_filing(row, filings)
-        status["value_in_quote"], detail["value_in_quote"], highlight = check_value_in_quote(row, chunks, key_rows)
+        status["value_in_quote"], detail["value_in_quote"], highlight = check_value_in_quote(row, chunks)
         status["math_check"], detail["math_check"] = check_math(row, key_rows)
         status["as_of_check"], detail["as_of_check"] = check_as_of(row, filings)
 
@@ -415,9 +401,7 @@ def verify() -> list[dict]:
             xbrl["xbrl_filing"] = f"{filing['form']} filed {filing['filing_date']}"
             if xbrl["xbrl_check"] == "NOT_FOUND":
                 if not xbrl["xbrl_detail"]:
-                    scope = " (secured, securitization and subsidiary facilities excluded)" \
-                        if row["field"].startswith("revolver") else ""
-                    xbrl["xbrl_detail"] = f"No matching tagged fact at {row['as_of']}{scope}."
+                    xbrl["xbrl_detail"] = f"No matching tagged fact at {row['as_of']}."
                 # Not tagged in this filing: say if the ticker's other filing tags it.
                 for (t, period), other in by_period.items():
                     if t != row["ticker"] or other is filing:

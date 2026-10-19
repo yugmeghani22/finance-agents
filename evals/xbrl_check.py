@@ -2,10 +2,8 @@
 
 Each row is compared with the XBRL fact for the same filing and balance-sheet
 date (the row's as_of). Tags are tried in the order listed; the tag that
-matched is recorded. Facts with no dimension (company-wide figures) are
-preferred. For revolvers, facility-level facts are allowed, but not those for
-secured, securitization, FHLB, discount-window, letter-of-credit or subsidiary
-facilities (see DEFINITIONS.md).
+matched is recorded. Only facts with no dimension (company-wide figures) are
+used.
 
 xbrl_check values:
   MATCH          XBRL equals draft_value
@@ -28,17 +26,9 @@ CASH_TAGS = ["CashAndCashEquivalentsAtCarryingValue",
              "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"]
 DEBT_PARTS = ["ShortTermBorrowings", "CommercialPaper", "LongTermDebtCurrent", "LongTermDebtNoncurrent"]
 DEBT_FALLBACK = ["LongTermDebt", "DebtCurrent"]
-REVOLVER_SIZE_TAGS = ["LineOfCreditFacilityMaximumBorrowingCapacity"]
-REVOLVER_UNDRAWN_TAGS = ["LineOfCreditFacilityRemainingBorrowingCapacity"]
-MATURITY_TAGS = ["LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths",
-                 "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextRollingTwelveMonths"]
-ALL_TAGS = set(CASH_TAGS + DEBT_PARTS + DEBT_FALLBACK + REVOLVER_SIZE_TAGS + REVOLVER_UNDRAWN_TAGS + MATURITY_TAGS)
+CURRENT_DEBT_TAGS = ["LongTermDebtCurrent", "DebtCurrent"]
+ALL_TAGS = set(CASH_TAGS + DEBT_PARTS + DEBT_FALLBACK + CURRENT_DEBT_TAGS)
 
-# Revolver facts for these facilities are excluded by DEFINITIONS.md.
-EXCLUDED_FACILITY = re.compile(
-    r"VariableInterestEntity|Trust|FederalHomeLoan|DiscountWindow|LetterOfCredit|Subsidiar|Secured|Securiti",
-    re.I,
-)
 
 
 # ------------------------------------------------------------------ facts
@@ -65,26 +55,18 @@ def load_facts(folder: Path, accession_no: str) -> list[dict]:
     return json.loads(path.read_text())
 
 
-def _values(facts: list[dict], tag: str, period: str, allow_dims=None) -> list[float]:
-    """Distinct values of `tag` at the instant `period`. Dimensionless facts
-    win; dimensioned ones are used only if `allow_dims` accepts them."""
-    at = [f for f in facts if f["tag"] == tag and f["period_key"] == f"instant_{period}"]
-    plain = sorted({f["value_m"] for f in at if not f["dims"]})
-    if plain or allow_dims is None:
-        return plain
-    return sorted({f["value_m"] for f in at if f["dims"] and allow_dims(f["dims"])})
+def _values(facts: list[dict], tag: str, period: str) -> list[float]:
+    """Distinct dimensionless values of `tag` at the instant `period`."""
+    return sorted({f["value_m"] for f in facts
+                   if f["tag"] == tag and f["period_key"] == f"instant_{period}" and not f["dims"]})
 
 
-def _single(facts, tags, period, allow_dims=None) -> tuple[list[float], str]:
+def _single(facts, tags, period) -> tuple[list[float], str]:
     for tag in tags:
-        vals = _values(facts, tag, period, allow_dims)
+        vals = _values(facts, tag, period)
         if vals:
             return vals, tag
     return [], ""
-
-
-def _allowed_facility(dims: dict) -> bool:
-    return not any(EXCLUDED_FACILITY.search(f"{k} {v}") for k, v in dims.items())
 
 
 def total_debt(facts, period) -> tuple[float | None, str, str]:
@@ -158,13 +140,7 @@ def cross_check(field: str, draft: str, facts: list[dict], period: str) -> dict:
             return {"xbrl_value": "", "xbrl_tag": "", "xbrl_check": "NOT_FOUND", "xbrl_detail": f"can't compute: {why}"}
         detail = f"({debt_detail}) - {cash_tag} {cash[0]:,.0f}"
         return _compare(draft, [debt - cash[0]], f"total_debt - {cash_tag}", detail)
-    if field == "revolver_size":
-        vals, tag = _single(facts, REVOLVER_SIZE_TAGS, period, _allowed_facility)
-        return _compare(draft, vals, tag, "")
-    if field == "revolver_undrawn":
-        vals, tag = _single(facts, REVOLVER_UNDRAWN_TAGS, period, _allowed_facility)
-        return _compare(draft, vals, tag, "")
-    if field == "nearest_maturity_amount":
-        vals, tag = _single(facts, MATURITY_TAGS, period)
+    if field == "debt_due_within_12m":
+        vals, tag = _single(facts, CURRENT_DEBT_TAGS, period)
         return _compare(draft, vals, tag, "")
     return {"xbrl_value": "", "xbrl_tag": "", "xbrl_check": "N/A", "xbrl_detail": "no XBRL mapping for this field"}

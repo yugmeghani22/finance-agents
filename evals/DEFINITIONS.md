@@ -1,6 +1,6 @@
 # Liquidity field definitions
 
-v1 measures near-term liquidity: cash, debt, committed backup facilities and the next maturity.
+v1 measures near-term liquidity: cash, debt, net debt and debt due within 12 months.
 
 These rules apply to `answer_key_liquidity.csv` and to any agent that extracts the
 same fields. When the answer key and an agent disagree, check both against this file
@@ -34,11 +34,7 @@ first.
 | `cash_and_equivalents` | Cash and cash equivalents as reported. **Excludes restricted cash.** |
 | `total_debt` | Short-term borrowings + long-term debt. **Exclude customer deposits.** |
 | `net_debt` | `total_debt` − `cash_and_equivalents`. Show the math in `notes`. |
-| `revolver_size` | Committed bank credit facilities named as such in the filing; exclude secured/securitization facilities and subsidiary credit lines. |
-| `revolver_undrawn` | Size minus amounts drawn, for the same facilities as `revolver_size`. Use the filing's stated available amount if given. Subtract commercial paper outstanding only if the filing explicitly says it reduces availability. |
-| `revolver_*` (both) | If a facility isn't mentioned, use `not_disclosed`. If the filing explicitly says there is no facility, use `0`. |
-| `nearest_maturity_date` | Year of the earliest annual long-term debt maturity bucket disclosed (`YYYY`). |
-| `nearest_maturity_amount` | Amount in that bucket, in $ millions. `as_of` is the date of the filing that gives the schedule. |
+| `debt_due_within_12m` | Debt due within 12 months, from the latest 10-Q balance sheet, with the same `as_of` as `cash_and_equivalents`. Take the balance sheet's current-debt line: the current portion of long-term debt, under whatever name the filer uses (for example "Current maturities of debt" or "Short-term debt"; XBRL `LongTermDebtCurrent` or `DebtCurrent`). If that line already includes short-term borrowings or commercial paper, use it as is. Add short-term borrowings only when they are a separate balance-sheet line that `total_debt` counts. If the balance sheet doesn't split out a current portion of long-term debt (an unclassified balance sheet, as banks usually present), use `not_disclosed`; don't rebuild it from maturity schedules or notes. Must not exceed `total_debt`. |
 
 ## Out of scope for v1
 
@@ -47,3 +43,7 @@ first.
 - `covenant_terms`: free text, hard to score objectively.
 - `buyback_remaining`: the data layer doesn't extract 10-Q Part II, Item 2, where
   remaining repurchase authorization is disclosed.
+- `revolver_size`, `revolver_undrawn`: revolvers don't apply to bank funding
+  models and are rarely XBRL-tagged.
+- `nearest_maturity_date`, `nearest_maturity_amount`: annual maturity buckets go
+  stale between filings.
