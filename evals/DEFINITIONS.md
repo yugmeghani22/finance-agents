@@ -29,7 +29,8 @@ first.
 | `total_debt` | Short-term borrowings + long-term debt. **Exclude customer deposits.** |
 | `net_debt` | `total_debt` − `cash_and_equivalents`. Show the math in `notes`. |
 | `revolver_size` | Committed bank credit facilities named as such in the filing; exclude secured/securitization facilities and subsidiary credit lines. |
-| `revolver_undrawn` | Undrawn amount of the same facilities as `revolver_size`. |
+| `revolver_undrawn` | Size minus amounts drawn, for the same facilities as `revolver_size`. Use the filing's stated available amount if given. Subtract commercial paper outstanding only if the filing explicitly says it reduces availability. |
+| `revolver_*` (both) | If a facility isn't mentioned, use `not_disclosed`. If the filing explicitly says there is no facility, use `0`. |
 | `nearest_maturity_date` | Year of the earliest annual long-term debt maturity bucket disclosed (`YYYY`). |
 | `nearest_maturity_amount` | Amount in that bucket, in $ millions. `as_of` is the date of the filing that gives the schedule. |
 
