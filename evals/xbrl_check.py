@@ -9,7 +9,8 @@ facilities (see DEFINITIONS.md).
 
 xbrl_check values:
   MATCH          XBRL equals draft_value
-  MATCH_ROUNDED  within ROUNDING_TOLERANCE (draft was from a $bn figure)
+  MATCH_ROUNDED  within ROUNDING_TOLERANCE, and the draft is a whole $0.1bn (so it
+                 may come from a rounded "$X.X billion" in the text)
   MISMATCH       XBRL has a different value
   XBRL_ONLY      draft is not_disclosed, but the filing tags a value
   NOT_FOUND      no usable fact
@@ -21,6 +22,7 @@ import re
 from pathlib import Path
 
 ROUNDING_TOLERANCE = 0.005  # 0.5%: covers figures given to $0.1bn in the text
+ROUNDED_TO = 100  # $m; a draft that is a multiple of this may come from a rounded "$X.X billion"
 
 CASH_TAGS = ["CashAndCashEquivalentsAtCarryingValue",
              "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"]
@@ -127,7 +129,9 @@ def _compare(draft: str, candidates: list[float], tag: str, detail: str) -> dict
         out["xbrl_detail"] = (f"several values tagged ({shown}); compared with the closest. " + detail).strip()
     if round(best) == round(d):
         out["xbrl_check"] = "MATCH"
-    elif abs(best - d) <= ROUNDING_TOLERANCE * max(abs(best), 1):
+    elif d % ROUNDED_TO == 0 and abs(best - d) <= ROUNDING_TOLERANCE * max(abs(best), 1):
+        # Only a figure that looks rounded (whole $0.1bn) can differ by rounding;
+        # an exact-looking draft that differs is a real difference.
         out["xbrl_check"] = "MATCH_ROUNDED"
         out["xbrl_detail"] = (f"draft {d:,.0f} vs XBRL {best:,.0f} (diff {d - best:+,.0f}, within rounding). "
                               + out["xbrl_detail"]).strip()

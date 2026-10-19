@@ -266,7 +266,16 @@ def check_value_in_quote(row, chunks, key_rows) -> tuple[str, str, str]:
                     if round(sum(to_number(m.group(1)) for m in combo) * mult, 3) == target:
                         shown = " + ".join(m.group(0).strip() for m in combo)
                         return PASS, f"sum {shown} x{mult}", ";".join(m.group(0).strip() for m in combo)
-    return FAIL, f"{draft} not found in quote (or as a column sum)", ""
+    # 3. One number less another, both in the same quoted row or sentence (e.g.
+    # a total "includes restricted cash: $ 165" that the definition excludes).
+    for part in row["_quote_parts"]:
+        mult = table_multiplier(chunk_text, part) if is_table_row(part) else 1
+        nums = list(NUMBER.finditer(part))
+        for a, b in itertools.permutations(nums, 2):
+            if round((to_number(a.group(1)) - to_number(b.group(1))) * mult, 3) == target:
+                shown = f"{a.group(0).strip()} - {b.group(0).strip()}"
+                return PASS, f"difference {shown} x{mult}", f"{a.group(0).strip()};{b.group(0).strip()}"
+    return FAIL, f"{draft} not found in quote (or as a column sum or difference)", ""
 
 
 def check_math(row, key_rows) -> tuple[str, str]:
