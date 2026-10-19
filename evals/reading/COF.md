@@ -1,4 +1,4 @@
-# COF: liquidity, debt and fallback sections
+# COF: liquidity, debt, balance sheet and fallback sections
 
 Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.
 
@@ -220,6 +220,64 @@ __________
 (1)Some customers have time deposits in excess of the federal deposit insurance limit, making a portion of the deposit uninsured. As of June 30, 2026, the total time deposit amount with some portion in excess of the insured amount was $17.7 billion and the portion of total time deposits estimated to be uninsured was $13.1 billion. As of December 31, 2025, the total time deposit amount with some portion in excess of the insured amount was $17.4 billion and the portion of total time deposits estimated to be uninsured was $12.9 billion.
 
 (2)Includes $531 million and $544 million of Euro (“EUR”)-denominated unsecured notes as of June 30, 2026 and December 31, 2025, respectively.
+
+### balance_sheet (609 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS (UNAUDITED)
+
+#### COF_10Q_2026-07-28_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS (UNAUDITED)
+
+| (Dollars in millions, except per share-related data) | June 30, 2026 | December 31, 2025 |
+| --- | --- | --- |
+| Assets: |  |  |
+| Cash and cash equivalents: |  |  |
+| Cash and due from banks | $4,834 | $3,031 |
+| Interest-bearing deposits and other short-term investments | 49,880 | 54,403 |
+| Total cash and cash equivalents | 54,714 | 57,434 |
+| Restricted cash for securitization investors | 1,167 | 4,659 |
+| Investment securities: |  |  |
+| Investment securities available for sale (amortized cost basis of $ 97.0 billion and $ 97.7 billion as of June 30, 2026 and December 31, 2025, respectively; allowance for credit losses of $ 3 million as of both June 30, 2026 and December 31, 2025) | 90,041 | 91,051 |
+| Investment securities held to maturity | 2,737 | — |
+| Total investment securities | 92,778 | 91,051 |
+| Loans held for investment: |  |  |
+| Unsecuritized loans held for investment | 431,440 | 425,665 |
+| Loans held in consolidated trusts | 25,728 | 27,957 |
+| Total loans held for investment | 457,168 | 453,622 |
+| Allowance for credit losses | ( 22,966 ) | ( 23,409 ) |
+| Net loans held for investment | 434,202 | 430,213 |
+| Loans held for sale ($ 206 million and $ 755 million carried at fair value as of June 30, 2026 and December 31, 2025, respectively) | 264 | 760 |
+| Premises and equipment, net | 6,244 | 5,602 |
+| Interest receivable | 3,432 | 3,492 |
+| Goodwill | 31,866 | 28,509 |
+| Other intangible assets | 16,077 | 16,578 |
+| Other assets | 33,091 | 30,711 |
+| Total assets | $673,835 | $669,009 |
+| Liabilities: |  |  |
+| Interest payable | $816 | $844 |
+| Deposits: |  |  |
+| Non-interest-bearing deposits | 27,793 | 27,385 |
+| Interest-bearing deposits | 456,464 | 448,386 |
+| Total deposits | 484,257 | 475,771 |
+| Securitized debt obligations | 8,502 | 12,853 |
+| Other debt: |  |  |
+| Federal funds purchased and securities loaned or sold under agreements to repurchase | 694 | 587 |
+| Senior and subordinated notes | 35,620 | 36,001 |
+| Other borrowings | 555 | 1,559 |
+| Total other debt | 36,869 | 38,147 |
+| Other liabilities | 29,598 | 27,778 |
+| Total liabilities | 560,042 | 555,393 |
+| Commitments, contingencies and guarantees (see Note 14) |  |  |
+| Stockholders’ equity: |  |  |
+| Preferred stock (par value $ 0.01 per share; 50,000,000 shares authorized; 4,980,700 shares issued and outstanding as of both June 30, 2026 and December 31, 2025) | — | — |
+| Common stock (par value $ 0.01 per share; 1,000,000,000 shares authorized; 714,105,102 and 708,546,381 shares issued as of June 30, 2026 and December 31, 2025, respectively; 613,484,836 and 625,102,271 shares outstanding as of June 30, 2026 and December 31, 2025, respectively) | 7 | 7 |
+| Additional paid-in capital, net | 65,105 | 64,031 |
+| Retained earnings | 69,250 | 65,192 |
+| Accumulated other comprehensive loss | ( 6,300 ) | ( 5,468 ) |
+| Treasury stock, at cost (par value $ 0.01 per share; 100,620,266 and 83,444,110 shares as of June 30, 2026 and December 31, 2025, respectively) | ( 14,269 ) | ( 10,146 ) |
+| Total stockholders’ equity | 113,793 | 113,616 |
+| Total liabilities and stockholders’ equity | $673,835 | $669,009 |
 
 ## 10-K filed 2026-02-19
 
@@ -455,3 +513,58 @@ Table 9.2: Maturity Profile of Borrowings
 | Senior and subordinated notes | 2,953 | 5,307 | 4,376 | 3,297 | 4,547 | 15,521 | 36,001 |
 | Other borrowings | 1,006 | 6 | 6 | 3 | 538 | 0 | 1,559 |
 | Total | $92,962 | $21,438 | $11,625 | $5,684 | $6,964 | $17,318 | $155,991 |
+
+### balance_sheet (566 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS
+
+#### COF_10K_2026-02-19_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS
+
+| (Dollars in millions, except per share-related data) | December 31, 2025 | December 31, 2024 |
+| --- | --- | --- |
+| Assets: |  |  |
+| Cash and cash equivalents: |  |  |
+| Cash and due from banks | $3,031 | $3,028 |
+| Interest-bearing deposits and other short-term investments | 54,403 | 40,202 |
+| Total cash and cash equivalents | 57,434 | 43,230 |
+| Restricted cash for securitization investors | 4,659 | 441 |
+| Securities available for sale (amortized cost basis of $ 97.7 billion and $ 93.0 billion and allowance for credit losses of $ 3 million and $ 4 million as of December 31, 2025 and 2024, respectively) | 91,051 | 83,013 |
+| Loans held for investment: |  |  |
+| Unsecuritized loans held for investment | 425,665 | 298,241 |
+| Loans held in consolidated trusts | 27,957 | 29,534 |
+| Total loans held for investment | 453,622 | 327,775 |
+| Allowance for credit losses | ( 23,409 ) | ( 16,258 ) |
+| Net loans held for investment | 430,213 | 311,517 |
+| Loans held for sale ($ 755 million and $ 87 million carried at fair value as of December 31, 2025 and 2024, respectively) | 760 | 202 |
+| Premises and equipment, net | 5,602 | 4,511 |
+| Interest receivable | 3,492 | 2,532 |
+| Goodwill | 28,509 | 15,059 |
+| Other intangible assets | 16,578 | 233 |
+| Other assets | 30,711 | 29,406 |
+| Total assets | $669,009 | $490,144 |
+| Liabilities: |  |  |
+| Interest payable | $844 | $666 |
+| Deposits: |  |  |
+| Non-interest-bearing deposits | 27,385 | 26,122 |
+| Interest-bearing deposits | 448,386 | 336,585 |
+| Total deposits | 475,771 | 362,707 |
+| Securitized debt obligations | 12,853 | 14,264 |
+| Other debt: |  |  |
+| Federal funds purchased and securities loaned or sold under agreements to repurchase | 587 | 562 |
+| Senior and subordinated notes | 36,001 | 30,696 |
+| Other borrowings | 1,559 | 29 |
+| Total other debt | 38,147 | 31,287 |
+| Other liabilities | 27,778 | 20,436 |
+| Total liabilities | 555,393 | 429,360 |
+| Commitments, contingencies and guarantees (see Note 19) |  |  |
+| Stockholders’ equity: |  |  |
+| Preferred stock (par value $ 0.01 per share; 50,000,000 shares authorized; 4,980,700 and 4,975,000 shares issued and outstanding as of December 31, 2025 and 2024, respectively) | 0 | 0 |
+| Common stock (par value $ 0.01 per share; 1,000,000,000 shares authorized; 708,546,381 and 702,224,674 shares issued as of December 31, 2025 and 2024, respectively; 625,102,271 and 381,230,343 shares outstanding as of December 31, 2025 and 2024, respectively) | 7 | 7 |
+| Additional paid-in capital, net | 64,031 | 36,428 |
+| Retained earnings | 65,192 | 64,505 |
+| Accumulated other comprehensive loss | ( 5,468 ) | ( 9,286 ) |
+| Treasury stock, at cost (par value $ 0.01 per share; 83,444,110 and 320,994,331 shares as of December 31, 2025 and 2024, respectively) | ( 10,146 ) | ( 30,870 ) |
+| Total stockholders’ equity | 113,616 | 60,784 |
+| Total liabilities and stockholders’ equity | $669,009 | $490,144 |

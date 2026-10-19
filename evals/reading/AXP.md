@@ -1,4 +1,4 @@
-# AXP: liquidity, debt and fallback sections
+# AXP: liquidity, debt, balance sheet and fallback sections
 
 Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.
 
@@ -479,6 +479,49 @@ Our cash flows from financing activities primarily include changes in customer d
 
 In both 2026 and 2025, the net cash provided by financing activities was primarily driven by growth in customer deposits and net proceeds from long-term debt and short-term borrowings, partially offset by share repurchases and dividend payments.
 
+### balance_sheet (458 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS
+
+#### AXP_10Q_2026-07-24_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS
+
+(Unaudited)
+
+| (Millions, except share data) | June 30, 2026 | December 31, 2025 |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and cash equivalents |  |  |
+| Cash and due from banks (includes restricted cash of consolidated variable interest entities: 2026, $ 4 ; 2025, nil ) | $3,453 | $3,559 |
+| Interest-bearing deposits in other banks | 41,469 | 43,491 |
+| Short-term investment securities (includes restricted investments of consolidated variable interest entities: 2026, $ 73 ; 2025, $ 84 ) | 321 | 742 |
+| Total cash and cash equivalents (includes restricted cash: 2026, $ 165 ; 2025, $ 169 ) | 45,243 | 47,792 |
+| Card balances (includes gross amounts available to settle obligations of consolidated variable interest entities: 2026, $ 32,167 ; 2025, $ 33,378 ), less reserves for credit losses: 2026, $ 5,866 ; 2025, $ 6,089 | 212,188 | 207,774 |
+| Card balances held for sale | 1,752 | 2,457 |
+| Other loans, less reserves for credit losses: 2026, $ 312 ; 2025, $ 323 | 11,115 | 10,605 |
+| Investment securities | 4,073 | 1,043 |
+| Premises and equipment, less accumulated depreciation and amortization: 2026, $ 12,858 ; 2025, $ 12,039 | 7,689 | 6,118 |
+| Other assets, less reserves for credit losses: 2026, $ 121 ; 2025, $ 86 | 26,143 | 24,263 |
+| Total assets | $308,203 | $300,052 |
+| Liabilities and Shareholders’ Equity |  |  |
+| Liabilities |  |  |
+| Customer deposits | $156,973 | $152,488 |
+| Accounts payable | 15,441 | 14,700 |
+| Short-term borrowings | 2,032 | 1,371 |
+| Long-term debt (includes debt issued by consolidated variable interest entities: 2026, $ 11,779 ; 2025, $ 13,022 ) | 57,017 | 56,387 |
+| Other liabilities | 42,460 | 41,632 |
+| Total liabilities | $273,923 | $266,578 |
+| Contingencies (Note 7) |  |  |
+| Shareholders’ Equity |  |  |
+| Preferred shares, $1.66 2/3 par value, authorized 20 million shares; issued and outstanding 1,600 shares as of June 30, 2026 and December 31, 2025 | — | — |
+| Common shares, $ 0.20 par value, authorized 3.6 billion shares; issued and outstanding 675 million shares as of June 30, 2026 and 686 million shares as of December 31, 2025 | 135 | 138 |
+| Additional paid-in capital | 11,121 | 11,126 |
+| Retained earnings | 26,379 | 25,487 |
+| Accumulated other comprehensive income (loss) | ( 3,355 ) | ( 3,277 ) |
+| Total shareholders’ equity | 34,280 | 33,474 |
+| Total liabilities and shareholders’ equity | $308,203 | $300,052 |
+
 ## 10-K filed 2026-02-06
 
 
@@ -850,3 +893,45 @@ Additionally, we maintained a committed, revolving, secured borrowing facility t
 We paid $21.8 million and $14.2 million in fees to maintain these lines in 2025 and 2024, respectively. These committed facilities do not contain material adverse change clauses, which might otherwise preclude borrowing under the credit facilities, nor are they dependent on our credit rating.
 
 We paid total interest, primarily related to short- and long-term debt, corresponding interest rate swaps and customer deposits, of $8.0 billion, $8.2 billion and $6.4 billion in 2025, 2024 and 2023, respectively.
+
+### balance_sheet (503 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS
+
+#### AXP_10K_2026-02-06_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS
+
+| December 31 (Millions, except share data) | 2025 | 2024 |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and cash equivalents |  |  |
+| Cash and due from banks (includes restricted cash of consolidated variable interest entities: 2025, nil ; 2024, $ 6 ) | $3,559 | $3,413 |
+| Interest-bearing deposits in other banks | 43,491 | 37,006 |
+| Short-term investment securities (includes restricted investments of consolidated variable interest entities: 2025, $ 84 ; 2024, $ 82 ) | 742 | 221 |
+| Total cash and cash equivalents (includes restricted cash: 2025, $ 169 ; 2024, $ 427 ) | 47,792 | 40,640 |
+| Card Member receivables (includes gross receivables available to settle obligations of a consolidated variable interest entity: 2025, $ 5,659 ; 2024, $ 3,927 ), less reserves for credit losses: 2025, $ 180 ; 2024, $ 171 | 61,851 | 59,240 |
+| Card Member loans (includes gross loans available to settle obligations of a consolidated variable interest entity: 2025, $ 27,719 ; 2024, $ 28,278 ), less reserves for credit losses: 2025, $ 5,909 ; 2024, $ 5,679 | 145,923 | 133,995 |
+| Card Member loans held for sale | 2,457 | 758 |
+| Other loans, less reserves for credit losses: 2025, $ 323 ; 2024, $ 194 | 10,605 | 9,038 |
+| Investment securities | 1,043 | 1,240 |
+| Premises and equipment, less accumulated depreciation and amortization: 2025, $ 12,039 ; 2024, $ 10,739 | 6,118 | 5,371 |
+| Other assets, less reserves for credit losses: 2025, $ 86 ; 2024, $ 27 | 24,263 | 21,179 |
+| Total assets | $300,052 | $271,461 |
+| Liabilities and Shareholders’ Equity |  |  |
+| Liabilities |  |  |
+| Customer deposits | $152,488 | $139,413 |
+| Accounts payable | 14,700 | 13,884 |
+| Short-term borrowings | 1,371 | 1,374 |
+| Long-term debt (includes debt issued by consolidated variable interest entities: 2025, $ 13,022 ; 2024, $ 13,880 ) | 56,387 | 49,715 |
+| Other liabilities | 41,632 | 36,811 |
+| Total liabilities | $266,578 | $241,197 |
+| Contingencies, Commitments and Guarantees (Note 12) |  |  |
+| Shareholders’ Equity |  |  |
+| Preferred shares, $1.66 2/3 par value, authorized 20 million shares; issued and outstanding 1,600 shares as of December 31, 2025 and 2024 (Note 15) | — | — |
+| Common shares, $ 0.20 par value, authorized 3.6 billion shares; issued and outstanding 686 million shares as of December 31, 2025 and 702 million shares as of December 31, 2024 | 138 | 141 |
+| Additional paid-in capital | 11,126 | 11,370 |
+| Retained earnings | 25,487 | 22,148 |
+| Accumulated other comprehensive income (loss) | ( 3,277 ) | ( 3,395 ) |
+| Total shareholders’ equity | 33,474 | 30,264 |
+| Total liabilities and shareholders’ equity | $300,052 | $271,461 |

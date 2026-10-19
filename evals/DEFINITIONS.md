@@ -20,12 +20,18 @@ first.
 - **as_of.** The balance-sheet date of the filing the value comes from. Use the
   latest filing that discloses the field. Where that is the 10-K rather than the
   10-Q, `as_of` is the 10-K's date.
+- **Balance sheet values.** Balance sheet values (cash, debt) come from the
+  latest 10-Q. All inputs to a calculated field (such as `net_debt`) must share
+  the same `as_of`.
+- **Exact over rounded.** When the text gives a rounded figure (for example
+  "$59.0 billion") and XBRL from the same filing gives an exact figure, use the
+  exact figure.
 
 ## Fields
 
 | Field | Rule |
 | --- | --- |
-| `cash_and_equivalents` | Cash and cash equivalents as reported. |
+| `cash_and_equivalents` | Cash and cash equivalents as reported. **Excludes restricted cash.** |
 | `total_debt` | Short-term borrowings + long-term debt. **Exclude customer deposits.** |
 | `net_debt` | `total_debt` − `cash_and_equivalents`. Show the math in `notes`. |
 | `revolver_size` | Committed bank credit facilities named as such in the filing; exclude secured/securitization facilities and subsidiary credit lines. |

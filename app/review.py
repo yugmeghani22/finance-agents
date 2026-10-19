@@ -24,15 +24,20 @@ RESULTS_PATH = ROOT / "evals" / "verification_results.csv"
 DEFINITIONS_PATH = ROOT / "evals" / "DEFINITIONS.md"
 
 TICKERS = ["AXP", "COF", "SYF", "V", "MA"]
-STATUS_COLORS = {"PASS": "#1a7f37", "FAIL": "#cf222e", "REVIEW": "#9a6700"}
+STATUS_COLORS = {"AUTO_VERIFIED": "#0969da", "PASS": "#1a7f37", "FAIL": "#cf222e", "REVIEW": "#9a6700"}
 CHECKS = ["quote_in_chunk", "quote_in_filing", "value_in_quote", "math_check", "as_of_check"]
 FILTERS = {
     "All": lambda r: True,
+    "Needs a human (not AUTO_VERIFIED)": lambda r: r["status"] != "AUTO_VERIFIED",
+    "AUTO_VERIFIED": lambda r: r["status"] == "AUTO_VERIFIED",
     "FAIL": lambda r: r["status"] == "FAIL",
     "REVIEW": lambda r: r["status"] == "REVIEW",
     "Spot-check": lambda r: r["spot_check"] == "yes",
     "FAIL + REVIEW + spot-check": lambda r: r["status"] in ("FAIL", "REVIEW") or r["spot_check"] == "yes",
+    "XBRL disagrees": lambda r: r.get("xbrl_check") in ("MISMATCH", "XBRL_ONLY"),
 }
+XBRL_COLORS = {"MATCH": "#1a7f37", "MATCH_ROUNDED": "#1a7f37", "MISMATCH": "#cf222e",
+               "XBRL_ONLY": "#cf222e", "NOT_FOUND": "#57606a", "N/A": "#57606a"}
 PART_SEP = " [...] "
 
 
@@ -124,7 +129,7 @@ with st.sidebar:
     show = st.radio("Show", list(FILTERS), index=0)
     st.divider()
     st.caption("Status counts (all tickers)")
-    for s in ("PASS", "FAIL", "REVIEW"):
+    for s in STATUS_COLORS:
         st.markdown(f"{pill(s)} &nbsp; {sum(r['status'] == s for r in results)}", unsafe_allow_html=True)
     decided = sum(1 for r in key_rows.values() if r.get("verified_by_me"))
     st.caption(f"Reviewed: {decided} of {len(key_rows)} rows")
@@ -152,6 +157,18 @@ for res in rows:
             f"<div style='color:#57606a'>{html.escape(row['unit'])} · as of {html.escape(row['as_of'])}</div>",
             unsafe_allow_html=True,
         )
+
+        xc = res.get("xbrl_check", "")
+        if xc and xc != "N/A":
+            color = XBRL_COLORS.get(xc, "#57606a")
+            value = f" = {html.escape(res['xbrl_value'])}" if res["xbrl_value"] else ""
+            tag = f" <code>{html.escape(res['xbrl_tag'])}</code>" if res["xbrl_tag"] else ""
+            st.markdown(
+                f"<div style='font-size:0.9rem'><b>XBRL:</b> <span style='color:{color};font-weight:600'>{xc}</span>"
+                f"{value}{tag} <span style='color:#57606a'>· {html.escape(res['xbrl_filing'])}</span></div>"
+                f"<div style='font-size:0.8rem;color:#57606a'>{html.escape(res['xbrl_detail'])}</div>",
+                unsafe_allow_html=True,
+            )
 
         if res["failed_checks"]:
             st.markdown(f"**Failed checks:** {res['failed_checks'].replace(';', ', ')}")

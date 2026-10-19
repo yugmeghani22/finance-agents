@@ -16,8 +16,13 @@ os.environ["EDGAR_RATE_LIMIT_PER_SEC"] = "8"
 from dotenv import load_dotenv
 from edgar import Company, set_identity
 
-from data_layer.extract import SECTIONS, chunk, extract_sections, word_count
-from data_layer.store import CACHE_ROOT, chunk_id, filing_dirs, form_label, write_filing
+from data_layer.extract import SECTIONS, Section, chunk, document_blocks, extract_sections, find_balance_sheet, word_count
+from data_layer.store import CACHE_ROOT, chunk_id, filing_dirs, form_label, read_manifest, write_filing
+
+# Sections that can be added to an already-cached filing from its HTML alone,
+# without re-extracting (and so renumbering) the sections it already has.
+BACKFILLABLE = {"balance_sheet": lambda html: find_balance_sheet(document_blocks(html))}
+HTML_FILE = "primary.html"
 
 TICKERS = ["AXP", "COF", "SYF", "V", "MA"]
 FORMS = ["10-K", "10-Q"]
@@ -56,9 +61,10 @@ def fetch_filing(ticker: str, form: str, refresh: bool = False) -> str:
     if (folder / "manifest.json").exists():
         return f"cached ({folder.name}, still latest)"
 
+    html = filing.html()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sections = extract_sections(filing.obj(), form, filing.html())
+        sections = extract_sections(filing.obj(), form, html)
 
     manifest = {
         "ticker": ticker,
@@ -70,33 +76,68 @@ def fetch_filing(ticker: str, form: str, refresh: bool = False) -> str:
     }
     chunks: dict[str, list[dict]] = {}
     for name in SECTIONS:
-        sec = sections[name]
-        if not sec.found:
-            manifest["sections"][name] = {"status": "missing", "reason": sec.source}
-            continue
-        pieces = chunk(sec.text)
-        chunks[name] = [
-            {
-                "id": chunk_id(ticker, form, filing_date, name, i),
-                "ticker": ticker,
-                "form": form,
-                "filing_date": filing_date,
-                "section": name,
-                "chunk_index": i,
-                "source": sec.source,
-                "fallback": sec.fallback,
-                "text": text,
-            }
-            for i, text in enumerate(pieces, start=1)
-        ]
-        manifest["sections"][name] = {
-            "status": "fallback" if sec.fallback else "found",
-            "source": sec.source,
-            "words": word_count(sec.text),
-            "chunks": len(pieces),
-        }
+        records, manifest["sections"][name] = section_records(ticker, form, filing_date, name, sections[name])
+        if records:
+            chunks[name] = records
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / HTML_FILE).write_text(html)
     write_filing(folder, manifest, chunks)
     return f"downloaded ({folder.name})"
+
+
+def section_records(ticker: str, form: str, filing_date: str, name: str, sec: Section) -> tuple[list[dict], dict]:
+    """Chunk records for one section and its manifest entry."""
+    if not sec.found:
+        return [], {"status": "missing", "reason": sec.source}
+    pieces = chunk(sec.text)
+    records = [
+        {
+            "id": chunk_id(ticker, form, filing_date, name, i),
+            "ticker": ticker,
+            "form": form,
+            "filing_date": filing_date,
+            "section": name,
+            "chunk_index": i,
+            "source": sec.source,
+            "fallback": sec.fallback,
+            "text": text,
+        }
+        for i, text in enumerate(pieces, start=1)
+    ]
+    entry = {
+        "status": "fallback" if sec.fallback else "found",
+        "source": sec.source,
+        "words": word_count(sec.text),
+        "chunks": len(pieces),
+    }
+    return records, entry
+
+
+def backfill(ticker: str) -> list[str]:
+    """Add BACKFILLABLE sections missing from cached filings. Existing section
+    files are not touched, so their chunk ids stay the same."""
+    done = []
+    for folder in filing_dirs(ticker):
+        manifest = read_manifest(folder)
+        missing = [s for s in BACKFILLABLE if s not in manifest["sections"]]
+        if not missing:
+            continue
+        html_path = folder / HTML_FILE
+        if not html_path.exists():
+            from edgar import get_by_accession_number  # noqa: PLC0415
+
+            _ensure_identity()
+            html_path.write_text(get_by_accession_number(manifest["accession_no"]).html())
+        html = html_path.read_text()
+        chunks = {}
+        for name in missing:
+            records, manifest["sections"][name] = section_records(
+                manifest["ticker"], manifest["form"], manifest["filing_date"], name, BACKFILLABLE[name](html))
+            if records:
+                chunks[name] = records
+        write_filing(folder, manifest, chunks)
+        done.append(f"{folder.name}: +{', '.join(missing)}")
+    return done
 
 
 def fetch_all(tickers: list[str] = TICKERS, refresh: bool = False) -> None:
@@ -107,6 +148,8 @@ def fetch_all(tickers: list[str] = TICKERS, refresh: bool = False) -> None:
             except Exception as e:
                 status = f"ERROR: {type(e).__name__}: {e}"
             print(f"{ticker:<4} {form:<5} {status}")
+        for line in backfill(ticker):
+            print(f"{ticker:<4} backfilled {line}")
 
 
 if __name__ == "__main__":

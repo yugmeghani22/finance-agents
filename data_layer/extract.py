@@ -10,7 +10,19 @@ from dataclasses import dataclass
 
 from data_layer.html_text import html_to_blocks
 
-SECTIONS = ["mdna", "liquidity", "market_risk", "debt", "derivatives"]
+SECTIONS = ["mdna", "liquidity", "market_risk", "debt", "derivatives", "balance_sheet"]
+
+# The primary balance sheet, e.g. "CONSOLIDATED BALANCE SHEETS (UNAUDITED)" or
+# "Condensed Consolidated Statements of Financial Position". "Consolidated" is
+# required, which rules out parent-company-only sheets; the title must stand
+# alone, which rules out "...Balance Sheets Analysis" and "Average Balance Sheet".
+BALANCE_SHEET_TITLE = re.compile(
+    r"^(?:condensed )?consolidated (?:balance sheets?|statements? of financial (?:position|condition))"
+    r"(?: \(unaudited\))?$",
+    re.I,
+)
+BALANCE_SHEET_LOOKAHEAD = 8  # blocks between the title and its table
+FOOTNOTE_LINE = re.compile(r"^\(?[a-z0-9]{1,2}\)\s?\S", re.I)
 
 # Item names edgartools uses for each form.
 ITEM_KEYS = {
@@ -319,7 +331,45 @@ def extract_sections(report, form: str, html: str) -> dict[str, Section]:
     for name, note in (("debt", find_note(report, DEBT_NOTE, NOT_DEBT_NOTE)),
                        ("derivatives", find_note(report, DERIVATIVES_NOTE))):
         out[name] = note if note.found else fallback_excerpts(report, name, note.source, sources)
+    out["balance_sheet"] = find_balance_sheet(blocks)
     return out
+
+
+def _table_title(block: str) -> str | None:
+    """A balance-sheet title carried in a table's first rows (MA puts it there)."""
+    for line in block.split("\n")[:4]:
+        first = line.strip().strip("|").split("|")[0].strip()
+        if BALANCE_SHEET_TITLE.match(first):
+            return first
+    return None
+
+
+def find_balance_sheet(blocks: list[str]) -> Section:
+    """The filing's consolidated balance sheet: its title, the lines between
+    the title and the table (units, dates), the table(s) through "Total
+    liabilities", and the footnotes right after."""
+    for i, block in enumerate(blocks):
+        if is_table(block):
+            title = _table_title(block)
+            first_table = i if title else None
+        elif BALANCE_SHEET_TITLE.match(block):
+            title = block
+            first_table = next((j for j in range(i + 1, min(i + 1 + BALANCE_SHEET_LOOKAHEAD, len(blocks)))
+                                if is_table(blocks[j])), None)
+        else:
+            continue
+        if first_table is None or not re.search(r"total assets", blocks[first_table], re.I):
+            continue
+        end = first_table + 1
+        # A balance sheet split across pages continues in the next table(s).
+        while not re.search(r"total liabilities", "\n".join(blocks[first_table:end]), re.I) \
+                and end < len(blocks) and end - first_table < 4:
+            end = next((j + 1 for j in range(end, min(end + 3, len(blocks))) if is_table(blocks[j])), len(blocks))
+        while end < len(blocks) and FOOTNOTE_LINE.match(blocks[end]) and end - first_table < 10:
+            end += 1
+        body = blocks[i:end] if not is_table(block) else blocks[first_table:end]
+        return Section("\n\n".join(body), f"Balance sheet: {title}")
+    return Section(None, "no consolidated balance sheet found")
 
 
 def fallback_excerpts(report, section: str, missing_reason: str,

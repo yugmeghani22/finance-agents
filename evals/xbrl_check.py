@@ -1,0 +1,166 @@
+"""Cross-check answer-key values against the filing's own XBRL facts.
+
+Each row is compared with the XBRL fact for the same filing and balance-sheet
+date (the row's as_of). Tags are tried in the order listed; the tag that
+matched is recorded. Facts with no dimension (company-wide figures) are
+preferred. For revolvers, facility-level facts are allowed, but not those for
+secured, securitization, FHLB, discount-window, letter-of-credit or subsidiary
+facilities (see DEFINITIONS.md).
+
+xbrl_check values:
+  MATCH          XBRL equals draft_value
+  MATCH_ROUNDED  within ROUNDING_TOLERANCE (draft was from a $bn figure)
+  MISMATCH       XBRL has a different value
+  XBRL_ONLY      draft is not_disclosed, but the filing tags a value
+  NOT_FOUND      no usable fact
+  N/A            field has no XBRL mapping
+"""
+
+import json
+import re
+from pathlib import Path
+
+ROUNDING_TOLERANCE = 0.005  # 0.5%: covers figures given to $0.1bn in the text
+
+CASH_TAGS = ["CashAndCashEquivalentsAtCarryingValue",
+             "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"]
+DEBT_PARTS = ["ShortTermBorrowings", "CommercialPaper", "LongTermDebtCurrent", "LongTermDebtNoncurrent"]
+DEBT_FALLBACK = ["LongTermDebt", "DebtCurrent"]
+REVOLVER_SIZE_TAGS = ["LineOfCreditFacilityMaximumBorrowingCapacity"]
+REVOLVER_UNDRAWN_TAGS = ["LineOfCreditFacilityRemainingBorrowingCapacity"]
+MATURITY_TAGS = ["LongTermDebtMaturitiesRepaymentsOfPrincipalInNextTwelveMonths",
+                 "LongTermDebtMaturitiesRepaymentsOfPrincipalInNextRollingTwelveMonths"]
+ALL_TAGS = set(CASH_TAGS + DEBT_PARTS + DEBT_FALLBACK + REVOLVER_SIZE_TAGS + REVOLVER_UNDRAWN_TAGS + MATURITY_TAGS)
+
+# Revolver facts for these facilities are excluded by DEFINITIONS.md.
+EXCLUDED_FACILITY = re.compile(
+    r"VariableInterestEntity|Trust|FederalHomeLoan|DiscountWindow|LetterOfCredit|Subsidiar|Secured|Securiti",
+    re.I,
+)
+
+
+# ------------------------------------------------------------------ facts
+
+def load_facts(folder: Path, accession_no: str) -> list[dict]:
+    """Numeric facts for the mapped tags, cached as xbrl_facts.json."""
+    path = folder / "xbrl_facts.json"
+    if not path.exists():
+        from edgar import get_by_accession_number  # noqa: PLC0415 - only on a cache miss
+
+        from data_layer.fetch import _ensure_identity  # noqa: PLC0415 - SEC identity + rate limit
+        _ensure_identity()
+        facts = []
+        for f in get_by_accession_number(accession_no).xbrl().facts.get_facts():
+            tag = f["concept"].split(":")[-1]
+            if tag in ALL_TAGS and f.get("numeric_value") is not None and f.get("unit_ref", "").lower() == "usd":
+                facts.append({
+                    "tag": tag,
+                    "period_key": f.get("period_key"),
+                    "value_m": f["numeric_value"] / 1e6,
+                    "dims": {k[4:]: v for k, v in f.items() if k.startswith("dim_") and v},
+                })
+        path.write_text(json.dumps(facts, indent=1))
+    return json.loads(path.read_text())
+
+
+def _values(facts: list[dict], tag: str, period: str, allow_dims=None) -> list[float]:
+    """Distinct values of `tag` at the instant `period`. Dimensionless facts
+    win; dimensioned ones are used only if `allow_dims` accepts them."""
+    at = [f for f in facts if f["tag"] == tag and f["period_key"] == f"instant_{period}"]
+    plain = sorted({f["value_m"] for f in at if not f["dims"]})
+    if plain or allow_dims is None:
+        return plain
+    return sorted({f["value_m"] for f in at if f["dims"] and allow_dims(f["dims"])})
+
+
+def _single(facts, tags, period, allow_dims=None) -> tuple[list[float], str]:
+    for tag in tags:
+        vals = _values(facts, tag, period, allow_dims)
+        if vals:
+            return vals, tag
+    return [], ""
+
+
+def _allowed_facility(dims: dict) -> bool:
+    return not any(EXCLUDED_FACILITY.search(f"{k} {v}") for k, v in dims.items())
+
+
+def total_debt(facts, period) -> tuple[float | None, str, str]:
+    """Short-term borrowings + long-term debt from tagged parts; never Liabilities."""
+    parts = {t: _values(facts, t, period) for t in DEBT_PARTS + DEBT_FALLBACK}
+    for t, v in parts.items():
+        if len(v) > 1:
+            return None, t, f"{t} has several values {v}"
+    got = {t: v[0] for t, v in parts.items() if v}
+    if "LongTermDebtCurrent" in got or "LongTermDebtNoncurrent" in got:
+        used = [t for t in DEBT_PARTS if t in got]
+    elif "LongTermDebt" in got:
+        short = [t for t in ("ShortTermBorrowings", "CommercialPaper") if t in got]
+        if not short and "DebtCurrent" in got:
+            short = ["DebtCurrent"]
+        used = short + ["LongTermDebt"]
+    else:
+        found = ", ".join(f"{t} {v:,.0f}" for t, v in got.items()) or "none"
+        return None, "", f"no long-term debt tag (found: {found})"
+    total = sum(got[t] for t in used)
+    detail = " + ".join(f"{t} {got[t]:,.0f}" for t in used)
+    return total, "+".join(used), detail
+
+
+# ------------------------------------------------------------------ comparison
+
+def _compare(draft: str, candidates: list[float], tag: str, detail: str) -> dict:
+    shown = ", ".join(f"{v:,.0f}" for v in candidates)
+    out = {"xbrl_value": shown, "xbrl_tag": tag, "xbrl_detail": detail}
+    try:
+        d = float(draft)
+    except ValueError:
+        out["xbrl_check"] = "XBRL_ONLY" if candidates else "NOT_FOUND"
+        if candidates:
+            out["xbrl_detail"] = (f"draft is {draft!r} but the filing tags {tag} = {shown}. " + detail).strip()
+        return out
+    if not candidates:
+        out["xbrl_check"] = "NOT_FOUND"
+        return out
+    best = min(candidates, key=lambda v: abs(v - d))
+    if len(candidates) > 1:
+        out["xbrl_detail"] = (f"several values tagged ({shown}); compared with the closest. " + detail).strip()
+    if round(best) == round(d):
+        out["xbrl_check"] = "MATCH"
+    elif abs(best - d) <= ROUNDING_TOLERANCE * max(abs(best), 1):
+        out["xbrl_check"] = "MATCH_ROUNDED"
+        out["xbrl_detail"] = (f"draft {d:,.0f} vs XBRL {best:,.0f} (diff {d - best:+,.0f}, within rounding). "
+                              + out["xbrl_detail"]).strip()
+    else:
+        out["xbrl_check"] = "MISMATCH"
+        out["xbrl_detail"] = f"draft {d:,.0f} vs XBRL {best:,.0f} (diff {d - best:+,.0f}). " + out["xbrl_detail"]
+    return out
+
+
+def cross_check(field: str, draft: str, facts: list[dict], period: str) -> dict:
+    """XBRL comparison for one answer-key row (facts from the row's filing)."""
+    if field == "cash_and_equivalents":
+        vals, tag = _single(facts, CASH_TAGS, period)
+        note = "this tag includes restricted cash" if tag == CASH_TAGS[1] else ""
+        return _compare(draft, vals, tag, note)
+    if field == "total_debt":
+        total, tag, detail = total_debt(facts, period)
+        return _compare(draft, [total] if total is not None else [], tag, detail)
+    if field == "net_debt":
+        debt, debt_tag, debt_detail = total_debt(facts, period)
+        cash, cash_tag = _single(facts, CASH_TAGS, period)
+        if debt is None or len(cash) != 1:
+            why = debt_detail if debt is None else "no single cash value"
+            return {"xbrl_value": "", "xbrl_tag": "", "xbrl_check": "NOT_FOUND", "xbrl_detail": f"can't compute: {why}"}
+        detail = f"({debt_detail}) - {cash_tag} {cash[0]:,.0f}"
+        return _compare(draft, [debt - cash[0]], f"total_debt - {cash_tag}", detail)
+    if field == "revolver_size":
+        vals, tag = _single(facts, REVOLVER_SIZE_TAGS, period, _allowed_facility)
+        return _compare(draft, vals, tag, "")
+    if field == "revolver_undrawn":
+        vals, tag = _single(facts, REVOLVER_UNDRAWN_TAGS, period, _allowed_facility)
+        return _compare(draft, vals, tag, "")
+    if field == "nearest_maturity_amount":
+        vals, tag = _single(facts, MATURITY_TAGS, period)
+        return _compare(draft, vals, tag, "")
+    return {"xbrl_value": "", "xbrl_tag": "", "xbrl_check": "N/A", "xbrl_detail": "no XBRL mapping for this field"}

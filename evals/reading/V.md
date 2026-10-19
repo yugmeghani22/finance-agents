@@ -1,4 +1,4 @@
-# V: liquidity, debt and fallback sections
+# V: liquidity, debt, balance sheet and fallback sections
 
 Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.
 
@@ -208,6 +208,68 @@ Level 2 assets and liabilities. The fair value of U.S. government-sponsored debt
 
 (3)Represents the fair value of interest rate swap agreements entered into on a portion of the outstanding senior notes.
 
+### balance_sheet (556 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS
+
+#### V_10Q_2026-07-29_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS
+
+(UNAUDITED)
+
+|  | June 30, 2026 (in millions, except per share data) | September 30, 2025 (in millions, except per share data) |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and cash equivalents | $12,359 | $17,164 |
+| Restricted cash equivalents—U.S. litigation escrow | 888 | 2,990 |
+| Investment securities | 1,433 | 1,833 |
+| Settlement receivable | 2,400 | 4,191 |
+| Accounts receivable | 3,527 | 3,126 |
+| Customer collateral | 4,310 | 3,625 |
+| Current portion of client incentives | 2,523 | 2,158 |
+| Prepaid expenses and other current assets | 3,562 | 2,679 |
+| Total current assets | 31,002 | 37,766 |
+| Investment securities | 150 | 999 |
+| Client incentives | 5,884 | 5,157 |
+| Property, equipment and technology, net | 4,858 | 4,236 |
+| Goodwill | 20,825 | 19,879 |
+| Intangible assets, net | 27,532 | 27,646 |
+| Other assets | 4,339 | 3,944 |
+| Total assets | $94,590 | $99,627 |
+| Liabilities |  |  |
+| Accounts payable | $553 | $555 |
+| Settlement payable | 3,277 | 4,568 |
+| Customer collateral | 4,310 | 3,625 |
+| Accrued compensation and benefits | 2,219 | 1,863 |
+| Client incentives | 11,429 | 10,369 |
+| Accrued liabilities | 5,409 | 5,466 |
+| Current maturities of debt | 2,996 | 5,569 |
+| Accrued litigation | 1,274 | 3,033 |
+| Total current liabilities | 31,467 | 35,048 |
+| Long-term debt | 20,862 | 19,602 |
+| Deferred tax liabilities | 5,219 | 5,549 |
+| Other liabilities | 1,864 | 1,519 |
+| Total liabilities | 59,412 | 61,718 |
+| Commitments and contingencies (Note 14 and Note 16) |  |  |
+| Equity |  |  |
+| Preferred stock, $ 0.0001 par value, 5 shares issued and outstanding as of June 30, 2026 and September 30, 2025 | 514 | 745 |
+| Common stock, $ 0.0001 par value: |  |  |
+| Class A common stock, 1,702 and 1,691 shares issued and outstanding as of June 30, 2026 and September 30, 2025, respectively | — | — |
+| Class B-1, B-2 and B-3 total common stock, 63 and 125 shares issued and outstanding as of June 30, 2026 and September 30, 2025, respectively | — | — |
+| Class C common stock, 18 and 9 shares issued and outstanding as of June 30, 2026 and September 30, 2025, respectively | — | — |
+| Right to recover for covered losses | ( 111 ) | ( 124 ) |
+| Additional paid-in capital | 22,168 | 21,934 |
+| Accumulated income | 12,753 | 15,106 |
+| Accumulated other comprehensive income (loss): |  |  |
+| Investment securities | 2 | 12 |
+| Defined benefit pension and other postretirement plans | ( 25 ) | ( 32 ) |
+| Derivative instruments | ( 129 ) | ( 307 ) |
+| Foreign currency translation adjustments | 6 | 575 |
+| Total accumulated other comprehensive income (loss) | ( 146 ) | 248 |
+| Total equity | 35,178 | 37,909 |
+| Total liabilities and equity | $94,590 | $99,627 |
+
 ## 10-K filed 2025-11-06
 
 
@@ -348,3 +410,63 @@ Visa maintains a commercial paper program to support its working capital require
 Credit Facility
 
 In May 2023, the Company entered into an amended and restated credit agreement for a five-year, unsecured $7.0 billion revolving credit facility, which will expire in May 2028. This credit facility is maintained to ensure the integrity of the payment card settlement process and for general corporate purposes. Interest on borrowings will be charged at the applicable reference rate or an alternative base rate as defined in the credit agreement based on the currency and type of the borrowing, plus an applicable margin based on the applicable credit rating of the Company’s senior unsecured long-term debt. The Company has agreed to pay a commitment fee which will fluctuate based on such applicable rating of the Company. As of September 30, 2025, the Company was in compliance with all related covenants. As of September 30, 2025 and 2024, the Company had no amounts outstanding under the credit facility.
+
+### balance_sheet (545 words)
+
+Source: Balance sheet: CONSOLIDATED BALANCE SHEETS
+
+#### V_10K_2025-11-06_balance_sheet_01
+
+CONSOLIDATED BALANCE SHEETS
+
+|  | September 30, 2025 (in millions, except per share data) | September 30, 2024 (in millions, except per share data) |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and cash equivalents | $17,164 | $11,975 |
+| Restricted cash equivalents—U.S. litigation escrow | 2,990 | 3,089 |
+| Investment securities | 1,833 | 3,200 |
+| Settlement receivable | 4,191 | 4,454 |
+| Accounts receivable | 3,126 | 2,561 |
+| Customer collateral | 3,625 | 3,524 |
+| Current portion of client incentives | 2,158 | 1,918 |
+| Prepaid expenses and other current assets | 2,679 | 3,312 |
+| Total current assets | 37,766 | 34,033 |
+| Investment securities | 999 | 2,545 |
+| Client incentives | 5,157 | 4,628 |
+| Property, equipment and technology, net | 4,236 | 3,824 |
+| Goodwill | 19,879 | 18,941 |
+| Intangible assets, net | 27,646 | 26,889 |
+| Other assets | 3,944 | 3,651 |
+| Total assets | $99,627 | $94,511 |
+| Liabilities |  |  |
+| Accounts payable | $555 | $479 |
+| Settlement payable | 4,568 | 5,265 |
+| Customer collateral | 3,625 | 3,524 |
+| Accrued compensation and benefits | 1,863 | 1,538 |
+| Client incentives | 10,369 | 9,075 |
+| Accrued liabilities | 5,466 | 4,909 |
+| Current maturities of debt | 5,569 | — |
+| Accrued litigation | 3,033 | 1,727 |
+| Total current liabilities | 35,048 | 26,517 |
+| Long-term debt | 19,602 | 20,836 |
+| Deferred tax liabilities | 5,549 | 5,301 |
+| Other liabilities | 1,519 | 2,720 |
+| Total liabilities | 61,718 | 55,374 |
+| Commitments and contingencies (Note 18 and Note 20) |  |  |
+| Equity |  |  |
+| Preferred stock, $ 0.0001 par value, 5 shares issued and outstanding as of September 30, 2025 and 2024 | 745 | 1,031 |
+| Common stock, $ 0.0001 par value: |  |  |
+| Class A common stock, 1,691 and 1,733 shares issued and outstanding as of September 30, 2025 and 2024, respectively | — | — |
+| Class B-1 and B-2 total common stock, 125 shares issued and outstanding as of September 30, 2025 and 2024 | — | — |
+| Class C common stock, 9 and 10 shares issued and outstanding as of September 30, 2025 and 2024, respectively | — | — |
+| Right to recover for covered losses | ( 124 ) | ( 104 ) |
+| Additional paid-in capital | 21,934 | 21,229 |
+| Accumulated income | 15,106 | 17,289 |
+| Accumulated other comprehensive income (loss): |  |  |
+| Investment securities | 12 | 30 |
+| Defined benefit pension and other postretirement plans | ( 32 ) | ( 16 ) |
+| Derivative instruments | ( 307 ) | ( 213 ) |
+| Foreign currency translation adjustments | 575 | ( 109 ) |
+| Total accumulated other comprehensive income (loss) | 248 | ( 308 ) |
+| Total equity | 37,909 | 39,137 |
+| Total liabilities and equity | $99,627 | $94,511 |

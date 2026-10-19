@@ -1,4 +1,4 @@
-# SYF: liquidity, debt and fallback sections
+# SYF: liquidity, debt, balance sheet and fallback sections
 
 Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.
 
@@ -349,6 +349,55 @@ We have undrawn committed and uncommitted capacity under our credit facilities f
 
 •available borrowing capacity through the Federal Reserve discount window of $13.1 billion at June 30, 2026 and $10.0 billion at December 31, 2025, based on the amount and type of assets pledged.
 
+### balance_sheet (451 words)
+
+Source: Balance sheet: Condensed Consolidated Statements of Financial Position (Unaudited)
+
+#### SYF_10Q_2026-07-23_balance_sheet_01
+
+Condensed Consolidated Statements of Financial Position (Unaudited)
+
+____________________________________________________________________________________________
+
+| ($ in millions) | At June 30, 2026 | At December 31, 2025 |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and equivalents | $16,193 | $14,973 |
+| Debt securities (Note 3) | 4,365 | 2,348 |
+| Loan receivables: (Notes 4 and 5) |  |  |
+| Unsecuritized loans held for investment | 80,367 | 81,408 |
+| Restricted loans of consolidated securitization entities | 21,841 | 22,400 |
+| Total loan receivables | 102,208 | 103,808 |
+| Less: Allowance for credit losses | ( 10,312 ) | ( 10,442 ) |
+| Loan receivables, net | 91,896 | 93,366 |
+| Goodwill | 1,363 | 1,363 |
+| Intangible assets, net | 152 | 104 |
+| Other assets (Note 6) | 7,961 | 6,941 |
+| Total assets | $121,930 | $119,095 |
+| Liabilities and Equity |  |  |
+| Deposits: (Note 7) |  |  |
+| Interest-bearing deposit accounts | $82,376 | $80,748 |
+| Non-interest-bearing deposit accounts | 430 | 396 |
+| Total deposits | 82,806 | 81,144 |
+| Borrowings: (Notes 5 and 8) |  |  |
+| Borrowings of consolidated securitization entities | 8,916 | 8,415 |
+| Senior and subordinated unsecured notes | 7,516 | 6,767 |
+| Total borrowings | 16,432 | 15,182 |
+| Accrued expenses and other liabilities | 5,795 | 6,003 |
+| Total liabilities | $105,033 | $102,329 |
+| Equity: |  |  |
+| Preferred stock, par value $ 0.001 per share; 300 million shares authorized, 1.26 million and 1.25 million shares issued and outstanding at June 30, 2026 and December 31, 2025, respectively (Note 12) | $1,716 | $1,222 |
+| Common stock, par value $ 0.001 per share; 4.0 billion shares authorized; 834 million shares issued at both June 30, 2026 and December 31, 2025; 325 million and 347 million shares outstanding at June 30, 2026 and December 31, 2025, respectively | 1 | 1 |
+| Additional paid-in capital | 9,876 | 9,902 |
+| Retained earnings | 25,968 | 24,598 |
+| Accumulated other comprehensive income (loss): |  |  |
+| Debt securities | ( 21 ) | ( 6 ) |
+| Currency translation adjustments | ( 57 ) | ( 50 ) |
+| Employee benefit plans and other | 7 | 8 |
+| Treasury stock, at cost; 509 million and 487 million shares at June 30, 2026 and December 31, 2025, respectively | ( 20,593 ) | ( 18,909 ) |
+| Total equity | 16,897 | 16,766 |
+| Total liabilities and equity | $121,930 | $119,095 |
+
 ## 10-K filed 2026-02-06
 
 
@@ -617,3 +666,52 @@ Source: FALLBACK (no footnote with a matching title) - excerpts from: Item 7A > 
 **[FALLBACK - from Item 7A > Interest Rate Risk]**
 
 At December 31, 2025, 53% of our loan receivables were priced at a fixed interest rate to the customer, with the remaining 47% at a floating interest rate. We fund our assets with a combination of fixed rate and floating rate funding sources that include deposits, securitized financings and unsecured debt. To manage interest rate risk, we seek to match the interest rate repricing characteristics of our assets and liabilities. Historically, we have not used interest rate derivative contracts to manage interest rate risk; however, we may choose to do so in the future. To the extent we are unable to effectively match the interest rate sensitivity of our assets and liabilities, our net earnings could be materially adversely affected.
+
+### balance_sheet (436 words)
+
+Source: Balance sheet: Consolidated Statements of Financial Position
+
+#### SYF_10K_2026-02-06_balance_sheet_01
+
+Consolidated Statements of Financial Position
+
+____________________________________________________________________________________________
+
+| At December 31 ($ in millions) | 2025 | 2024 |
+| --- | --- | --- |
+| Assets |  |  |
+| Cash and equivalents | $14,973 | $14,711 |
+| Debt securities (Note 4) | 2,348 | 3,079 |
+| Loan receivables: (Notes 5 and 6) |  |  |
+| Unsecuritized loans held for investment | 81,408 | 83,382 |
+| Restricted loans of consolidated securitization entities | 22,400 | 21,339 |
+| Total loan receivables | 103,808 | 104,721 |
+| Less: Allowance for credit losses | ( 10,442 ) | ( 10,929 ) |
+| Loan receivables, net | 93,366 | 93,792 |
+| Goodwill (Note 7) | 1,363 | 1,274 |
+| Intangible assets, net (Note 7) | 1,255 | 854 |
+| Other assets | 5,790 | 5,753 |
+| Total assets | $119,095 | $119,463 |
+| Liabilities and Equity |  |  |
+| Deposits: (Note 8) |  |  |
+| Interest-bearing deposit accounts | $80,748 | $81,664 |
+| Non-interest-bearing deposit accounts | 396 | 398 |
+| Total deposits | 81,144 | 82,062 |
+| Borrowings: (Notes 6 and 9) |  |  |
+| Borrowings of consolidated securitization entities | 8,415 | 7,842 |
+| Senior and subordinated unsecured notes | 6,767 | 7,620 |
+| Total borrowings | 15,182 | 15,462 |
+| Accrued expenses and other liabilities | 6,003 | 5,359 |
+| Total liabilities | $102,329 | $102,883 |
+| Equity: |  |  |
+| Preferred stock, par value $ 0.001 per share; 300 million shares authorized, 1.25 million shares issued and outstanding at December 31, 2025 and December 31, 2024 | $1,222 | $1,222 |
+| Common stock, par value $ 0.001 per share; 4.0 billion shares authorized; 834 million shares issued at both December 31, 2025 and 2024; 347 million and 388 million shares outstanding at December 31, 2025 and 2024, respectively | 1 | 1 |
+| Additional paid-in capital | 9,902 | 9,853 |
+| Retained earnings | 24,598 | 21,635 |
+| Accumulated other comprehensive income (loss): |  |  |
+| Debt securities | ( 6 ) | ( 23 ) |
+| Currency translation adjustments | ( 50 ) | ( 44 ) |
+| Employee benefit plans and other | 8 | 8 |
+| Treasury stock, at cost; 487 million and 446 million shares at December 31, 2025 and 2024, respectively | ( 18,909 ) | ( 16,072 ) |
+| Total equity | 16,766 | 16,580 |
+| Total liabilities and equity | $119,095 | $119,463 |

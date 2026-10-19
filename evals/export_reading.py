@@ -1,4 +1,4 @@
-"""Export cached liquidity, debt and fallback sections to markdown for reading.
+"""Export cached liquidity, debt, balance sheet and fallback sections to markdown.
 
 Writes evals/reading/{ticker}.md with every chunk under a heading of its id,
 so a value found while reading can be cited by that id in the answer key.
@@ -13,7 +13,7 @@ from data_layer import SECTIONS, list_available, load_sections
 from data_layer.fetch import TICKERS
 
 OUT_DIR = Path(__file__).resolve().parent / "reading"
-ALWAYS = ["liquidity", "debt"]
+ALWAYS = ["liquidity", "debt", "balance_sheet"]
 
 # Cached text is already markdown (tables included); only make the
 # fallback source tags stand out.
@@ -32,7 +32,7 @@ def sections_to_export(manifest: dict) -> list[str]:
 
 def render(ticker: str) -> str:
     filings = list_available(ticker)  # newest first
-    out = [f"# {ticker}: liquidity, debt and fallback sections", ""]
+    out = [f"# {ticker}: liquidity, debt, balance sheet and fallback sections", ""]
     out.append("Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.")
     out.append("")
     for m in filings:

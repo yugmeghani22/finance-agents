@@ -1,4 +1,4 @@
-# MA: liquidity, debt and fallback sections
+# MA: liquidity, debt, balance sheet and fallback sections
 
 Each `####` heading is a chunk id - cite it in `answer_key_liquidity.csv`.
 
@@ -169,6 +169,58 @@ In conjunction with the Commercial Paper Program, the Company has a committed fi
 Borrowings under the Commercial Paper Program and the Credit Facility, which may total up to $8 billion, are to be used to provide liquidity for general corporate purposes, including providing liquidity in the event of one or more settlement failures by the Company’s customers. The Company may borrow and repay amounts under the Commercial Paper Program and Credit Facility for business continuity purposes.
 
 At June 30, 2026, the Company had $710 million of commercial paper outstanding, with a weighted-average interest rate of 3.84%. At June 30, 2026, the Company had no borrowings under the Credit Facility. At December 31, 2025, the Company had no borrowings under the Commercial Paper Program or Credit Facility. The Commercial Paper Program is supported by the Credit Facility.
+
+### balance_sheet (472 words)
+
+Source: Balance sheet: Consolidated Balance Sheets (Unaudited)
+
+#### MA_10Q_2026-07-30_balance_sheet_01
+
+|  | June 30, 2026 (in millions, except per share data) | December 31, 2025 (in millions, except per share data) |
+| --- | --- | --- |
+| Consolidated Balance Sheets (Unaudited) |  |  |
+| Assets |  |  |
+| Current assets: |  |  |
+| Cash and cash equivalents | $11,291 | $10,566 |
+| Restricted cash and restricted cash equivalents | 488 | 561 |
+| Restricted security deposits held for customers | 2,196 | 2,121 |
+| Investments | 318 | 332 |
+| Accounts receivable | 5,047 | 4,609 |
+| Settlement assets | 2,371 | 1,626 |
+| Prepaid expenses and other current assets | 4,811 | 3,743 |
+| Total current assets | 26,522 | 23,558 |
+| Property, equipment and right-of-use assets, net of accumulated depreciation and amortization of $ 2,878 and $ 2,756 , respectively | 2,541 | 2,303 |
+| Deferred income taxes | 1,441 | 1,567 |
+| Goodwill | 9,498 | 9,560 |
+| Other intangible assets, net of accumulated amortization of $ 3,303 and $ 3,096 , respectively | 5,466 | 5,554 |
+| Other assets | 12,223 | 11,615 |
+| Total Assets | $57,691 | $54,157 |
+| Liabilities and Equity |  |  |
+| Current liabilities: |  |  |
+| Accounts payable | $1,130 | $999 |
+| Settlement obligations | 3,159 | 2,409 |
+| Restricted security deposits held for customers | 2,196 | 2,121 |
+| Accrued litigation | 296 | 800 |
+| Accrued expenses | 13,027 | 13,272 |
+| Short-term debt | 2,459 | 749 |
+| Other current liabilities | 2,737 | 2,412 |
+| Total current liabilities | 25,004 | 22,762 |
+| Long-term debt | 22,184 | 18,251 |
+| Deferred income taxes | 315 | 307 |
+| Other liabilities | 4,582 | 5,091 |
+| Total Liabilities | 52,085 | 46,411 |
+| Commitments and Contingencies |  |  |
+| Stockholders’ Equity |  |  |
+| Class A common stock, $ 0.0001 par value; authorized 3,000 shares, 1,406 shares issued and 871 and 887 shares outstanding, respectively | — | — |
+| Class B common stock, $ 0.0001 par value; authorized 1,200 shares, 7 shares issued and outstanding | — | — |
+| Additional paid-in-capital | 7,070 | 6,907 |
+| Class A treasury stock, at cost, 536 and 518 shares, respectively | ( 92,226 ) | ( 83,224 ) |
+| Retained earnings | 91,771 | 85,035 |
+| Accumulated other comprehensive income (loss) | ( 1,004 ) | ( 981 ) |
+| Mastercard Incorporated Stockholders' Equity | 5,611 | 7,737 |
+| Non-controlling interests | ( 5 ) | 9 |
+| Total Equity | 5,606 | 7,746 |
+| Total Liabilities and Equity | $57,691 | $54,157 |
 
 ## 10-K filed 2026-02-11
 
@@ -369,3 +421,56 @@ In conjunction with the Commercial Paper Program, the Company has a committed fi
 indemnification provisions. The Company was in compliance in all material respects with the covenants of the Credit Facility at December 31, 2025 and 2024.
 
 Borrowings under the Commercial Paper Program and the Credit Facility are to be used to provide liquidity for general corporate purposes, including providing liquidity in the event of one or more settlement failures by the Company’s customers. The Company may borrow and repay amounts under the Commercial Paper Program and Credit Facility for business continuity purposes. The Company had no borrowings under the Credit Facility or the Commercial Paper Program at December 31, 2025 and 2024.
+
+### balance_sheet (463 words)
+
+Source: Balance sheet: Consolidated Balance Sheets
+
+#### MA_10K_2026-02-11_balance_sheet_01
+
+|  | December 31, 2025 (in millions, except per share data) | December 31, 2024 (in millions, except per share data) |
+| --- | --- | --- |
+| Consolidated Balance Sheets |  |  |
+| Assets |  |  |
+| Current assets: |  |  |
+| Cash and cash equivalents | $10,566 | $8,442 |
+| Restricted cash and restricted cash equivalents | 561 | 492 |
+| Restricted security deposits held for customers | 2,121 | 1,874 |
+| Investments | 332 | 330 |
+| Accounts receivable | 4,609 | 3,773 |
+| Settlement assets | 1,626 | 1,821 |
+| Prepaid expenses and other current assets | 3,743 | 2,992 |
+| Total current assets | 23,558 | 19,724 |
+| Property, equipment and right-of-use assets, net | 2,303 | 2,138 |
+| Deferred income taxes | 1,567 | 1,614 |
+| Goodwill | 9,560 | 9,193 |
+| Other intangible assets, net | 5,554 | 5,453 |
+| Other assets | 11,615 | 9,959 |
+| Total Assets | $54,157 | $48,081 |
+| Liabilities and Equity |  |  |
+| Current liabilities: |  |  |
+| Accounts payable | $999 | $929 |
+| Settlement obligations | 2,409 | 2,316 |
+| Restricted security deposits held for customers | 2,121 | 1,874 |
+| Accrued litigation | 800 | 930 |
+| Accrued expenses | 13,272 | 10,393 |
+| Short-term debt | 749 | 750 |
+| Other current liabilities | 2,412 | 2,028 |
+| Total current liabilities | 22,762 | 19,220 |
+| Long-term debt | 18,251 | 17,476 |
+| Deferred income taxes | 307 | 317 |
+| Other liabilities | 5,091 | 4,553 |
+| Total Liabilities | 46,411 | 41,566 |
+| Commitments and Contingencies |  |  |
+| Stockholders’ Equity |  |  |
+| Class A common stock, $ 0.0001 par value; authorized 3,000 shares, 1,406 and 1,404 shares issued and 887 and 907 shares outstanding, respectively | — | — |
+| Class B common stock, $ 0.0001 par value; authorized 1,200 shares, 7 shares issued and outstanding | — | — |
+| Additional paid-in-capital | 6,907 | 6,442 |
+| Class A treasury stock, at cost, 518 and 497 shares, respectively | ( 83,224 ) | ( 71,431 ) |
+| Retained earnings | 85,035 | 72,907 |
+| Accumulated other comprehensive income (loss) | ( 981 ) | ( 1,433 ) |
+| Mastercard Incorporated Stockholders' Equity | 7,737 | 6,485 |
+| Non-controlling interests | 9 | 30 |
+| Total Equity | 7,746 | 6,515 |
+| Total Liabilities and Equity | $54,157 | $48,081 |
+| The accompanying notes are an integral part of these consolidated financial statements. |  |  |

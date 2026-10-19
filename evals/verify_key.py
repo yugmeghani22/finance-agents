@@ -8,15 +8,27 @@ For every row of evals/answer_key_liquidity.csv:
   math_check       net_debt = total_debt - cash; revolver_undrawn <= revolver_size
   as_of_check      as_of equals the cited filing's period of report
 
+Each row is also cross-checked against the filing's XBRL facts for the same
+balance-sheet date (see evals/xbrl_check.py). That result is reported in the
+xbrl_* columns and does not change the row's status: a mismatch can be a
+definition difference (e.g. a tag that includes restricted cash) rather than
+an error, so it is for the reviewer to judge.
+
 Each check is PASS, FAIL or N/A. A row's status is REVIEW if its notes say
-UNSURE or nothing could be checked, FAIL if any check failed, else PASS.
-Three random PASS rows per ticker are marked for a manual spot check.
+UNSURE or nothing could be checked, FAIL if any check failed, AUTO_VERIFIED
+if no check failed and XBRL confirms the value (MATCH or MATCH_ROUNDED), else
+PASS. Three random PASS rows per ticker are marked for a manual spot check.
+
+AUTO_VERIFIED rows are also marked in the answer key (my_value and
+verified_by_me), but only where you haven't recorded a decision; a mark from
+an earlier run is removed if the row no longer qualifies.
 
 Run:  .venv/bin/python -m evals.verify_key
 Writes evals/verification_results.csv.
 """
 
 import csv
+import datetime
 import itertools
 import json
 import random
@@ -29,6 +41,7 @@ from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 from data_layer.extract import SECTIONS
 from data_layer.store import filing_dirs, read_manifest
+from evals.xbrl_check import cross_check, load_facts
 
 EVALS = Path(__file__).resolve().parent
 KEY_PATH = EVALS / "answer_key_liquidity.csv"
@@ -36,12 +49,15 @@ OUT_PATH = EVALS / "verification_results.csv"
 
 CHECKS = ["quote_in_chunk", "quote_in_filing", "value_in_quote", "math_check", "as_of_check"]
 PASS, FAIL, NA = "PASS", "FAIL", "N/A"
+AUTO_VERIFIED = "AUTO_VERIFIED"
+STATUSES = ["AUTO_VERIFIED", "PASS", "FAIL", "REVIEW"]
+XBRL_CONFIRMS = ("MATCH", "MATCH_ROUNDED")
 SPOT_CHECKS_PER_TICKER = 3
 SPOT_CHECK_SEED = 42  # fixed so the spot-check sample is reproducible
 PART_SEP = " [...] "  # separates the parts of a multi-part quote
 TABLE_WINDOW = 3000  # squashed characters that one table row's cells must fall within
 ROW_SPAN_CHARS = 400  # rendered characters one table row's cells may span
-FRAGMENT_BLOCK_TAGS =["p", "div", "td", "th", "tr", "li", "br", "table", "h1", "h2", "h3", "h4", "h5", "h6"]
+FRAGMENT_BLOCK_TAGS = ["p", "div", "td", "th", "tr", "li", "br", "table", "h1", "h2", "h3", "h4", "h5", "h6"]
 
 NUMBER = re.compile(r"\(?\$?\s?(\d[\d,]*(?:\.\d+)?)\)?(?:\s*(billion|million))?", re.I)
 NOTHING_DRAWN = re.compile(r"\bno (amount|amounts|borrowings)\b.*\b(drawn|outstanding|under)\b|\bundrawn\b", re.I)
@@ -357,6 +373,10 @@ def verify() -> list[dict]:
     key_rows = {(r["ticker"], r["field"]): r for r in key}
 
     filings: dict[str, dict] = {}
+    by_period: dict[tuple[str, str], dict] = {}
+    for manifest in {m["accession_no"]: m for m in manifests.values()}.values():
+        filings[manifest["accession_no"]] = filing_source(manifest)
+        by_period[(manifest["ticker"], filings[manifest["accession_no"]]["period_of_report"])] = manifest
     results = []
     for row in key:
         row["_ids"] = [x.strip() for x in row["source_chunk_id"].split(";") if x.strip()]
@@ -379,6 +399,29 @@ def verify() -> list[dict]:
         status["math_check"], detail["math_check"] = check_math(row, key_rows)
         status["as_of_check"], detail["as_of_check"] = check_as_of(row, filings)
 
+        filing = by_period.get((row["ticker"], row["as_of"]))
+        if filing:
+            xbrl = cross_check(row["field"], row["draft_value"],
+                               load_facts(Path(filing["_folder"]), filing["accession_no"]), row["as_of"])
+            xbrl["xbrl_filing"] = f"{filing['form']} filed {filing['filing_date']}"
+            if xbrl["xbrl_check"] == "NOT_FOUND":
+                if not xbrl["xbrl_detail"]:
+                    scope = " (secured, securitization and subsidiary facilities excluded)" \
+                        if row["field"].startswith("revolver") else ""
+                    xbrl["xbrl_detail"] = f"No matching tagged fact at {row['as_of']}{scope}."
+                # Not tagged in this filing: say if the ticker's other filing tags it.
+                for (t, period), other in by_period.items():
+                    if t != row["ticker"] or other is filing:
+                        continue
+                    alt = cross_check(row["field"], row["draft_value"],
+                                      load_facts(Path(other["_folder"]), other["accession_no"]), period)
+                    if alt["xbrl_value"]:
+                        xbrl["xbrl_detail"] = (xbrl["xbrl_detail"] + f" Not tagged in this filing; the {other['form']} "
+                                               f"(period {period}) tags {alt['xbrl_tag']} = {alt['xbrl_value']}.").strip()
+        else:
+            xbrl = {"xbrl_value": "", "xbrl_tag": "", "xbrl_check": "NOT_FOUND",
+                    "xbrl_detail": f"no cached filing with period {row['as_of']}", "xbrl_filing": ""}
+
         failed = [c for c in CHECKS if status[c] == FAIL]
         ran = [c for c in CHECKS if status[c] != NA]
         if "UNSURE" in row["notes"]:
@@ -388,6 +431,8 @@ def verify() -> list[dict]:
             detail["as_of_check"] = (detail["as_of_check"] + "; nothing could be checked").strip("; ")
         elif failed:
             overall = "FAIL"
+        elif xbrl["xbrl_check"] in XBRL_CONFIRMS:
+            overall = AUTO_VERIFIED
         else:
             overall = "PASS"
 
@@ -402,6 +447,11 @@ def verify() -> list[dict]:
             **status,
             "details": " | ".join(f"{c}: {detail[c]}" for c in CHECKS if detail[c]),
             "highlight": highlight,
+            "xbrl_check": xbrl["xbrl_check"],
+            "xbrl_value": xbrl["xbrl_value"],
+            "xbrl_tag": xbrl["xbrl_tag"],
+            "xbrl_filing": xbrl["xbrl_filing"],
+            "xbrl_detail": xbrl["xbrl_detail"],
             "filing_url": ";".join(urls),
             "text_fragment": fragment,
             "fragment_unique": fragment_unique,
@@ -416,17 +466,45 @@ def verify() -> list[dict]:
     return results
 
 
+def mark_auto_verified(results: list[dict]) -> tuple[int, int]:
+    """Record AUTO_VERIFIED rows in the answer key without touching human
+    decisions. Returns (rows marked, stale marks cleared)."""
+    status = {(r["ticker"], r["field"]): r for r in results}
+    with open(KEY_PATH, newline="") as f:
+        reader = csv.DictReader(f)
+        cols = list(reader.fieldnames)
+        rows = list(reader)
+    marked = cleared = 0
+    for row in rows:
+        res = status[(row["ticker"], row["field"])]
+        mine = row["verified_by_me"].startswith(AUTO_VERIFIED)
+        if res["status"] == AUTO_VERIFIED and (mine or not row["verified_by_me"]):
+            row["my_value"] = row["draft_value"]
+            row["verified_by_me"] = f"{AUTO_VERIFIED} {datetime.date.today()} (XBRL {res['xbrl_check']})"
+            marked += 1
+        elif mine:
+            row["my_value"] = row["verified_by_me"] = ""
+            cleared += 1
+    with open(KEY_PATH, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=cols)
+        w.writeheader()
+        w.writerows(rows)
+    return marked, cleared
+
+
 def main() -> None:
     results = verify()
     with open(OUT_PATH, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(results[0].keys()))
         w.writeheader()
         w.writerows(results)
-    counts = {s: sum(r["status"] == s for r in results) for s in ("PASS", "FAIL", "REVIEW")}
+    counts = {s: sum(r["status"] == s for r in results) for s in STATUSES}
     print(f"wrote {OUT_PATH.relative_to(EVALS.parent)}: {counts}")
+    marked, cleared = mark_auto_verified(results)
+    print(f"answer key: {marked} rows marked AUTO_VERIFIED, {cleared} stale marks cleared")
     for r in results:
         mark = " *spot*" if r["spot_check"] else ""
-        print(f"  {r['ticker']:<4}{r['field']:<24}{r['status']:<7}{r['failed_checks']}{mark}")
+        print(f"  {r['ticker']:<4}{r['field']:<24}{r['status']:<14}{r['xbrl_check']:<14}{r['failed_checks']}{mark}")
 
 
 if __name__ == "__main__":
