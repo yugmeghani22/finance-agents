@@ -58,7 +58,7 @@ def fetch_filing(ticker: str, form: str, refresh: bool = False) -> str:
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sections = extract_sections(filing.obj(), form)
+        sections = extract_sections(filing.obj(), form, filing.html())
 
     manifest = {
         "ticker": ticker,

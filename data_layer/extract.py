@@ -8,6 +8,8 @@ gap is recorded as a gap and never papered over.
 import re
 from dataclasses import dataclass
 
+from data_layer.html_text import html_to_blocks
+
 SECTIONS = ["mdna", "liquidity", "market_risk", "debt", "derivatives"]
 
 # Item names edgartools uses for each form.
@@ -26,7 +28,14 @@ ITEM_HEADING = {
     "10-Q": {"mdna": re.compile(r"^item\s*2\.?\s+management", re.I)},
 }
 ANY_ITEM_HEADING = re.compile(r"^item\s*\d+[a-c]?\.", re.I)
+TABLE_ITEM_HEADING = re.compile(r"^\|\s*item\s*\d+[a-c]?\.", re.I | re.M)
+# A period, optionally followed by closing quotes or parentheses.
+SENTENCE_END = re.compile("\\.[\u201d\u2019\"')]*$")
 MIN_MDNA_WORDS = 1000
+# Matching edgartools' item text back to the table-preserving blocks.
+ANCHOR_CHARS = 120
+MAX_TRAILING_BLOCKS = 40
+MAX_LENGTH_GAP = 0.5  # rebuilt span may differ from edgartools' by this fraction
 MIN_SUBSECTION_WORDS = 150
 
 LIQUIDITY_START = re.compile(r"liquidity|capital resources", re.I)
@@ -69,6 +78,8 @@ FALLBACK_TERMS = {
 FALLBACK_SKIP_HEADINGS = re.compile(r"glossary|forward-looking|cautionary", re.I)
 FALLBACK_MIN_WORDS = 8
 FALLBACK_MAX_WORDS = 4000
+FALLBACK_TAG = "[FALLBACK - from {where}]"
+FALLBACK_TAG_LINE = re.compile(r"^\[FALLBACK - from [^\]]*\]$")
 
 
 @dataclass
@@ -133,30 +144,95 @@ def subsection(text: str, start: re.Pattern, stop: re.Pattern) -> tuple[str, str
     return (best[1], best[2]) if best else None
 
 
-def item_from_document(report, form: str, section: str) -> str | None:
-    """Find an item in the full document text by its own "Item N." heading.
+def document_blocks(html: str) -> list[str]:
+    """The whole filing as paragraphs, tables as markdown, page furniture dropped."""
+    return [b for b in html_to_blocks(html) if not NOISE_LINE.match(b)]
+
+
+def is_table(block: str) -> bool:
+    return block.startswith("|")
+
+
+def is_item_heading(block: str) -> bool:
+    """An "Item N." heading, as a paragraph or as the first row of a table
+    (some filers put the heading in an index table, e.g. COF's 10-Q)."""
+    if ANY_ITEM_HEADING.match(block):
+        return True
+    if is_table(block):
+        first_rows = "\n".join(block.split("\n")[:4])
+        return bool(TABLE_ITEM_HEADING.search(first_rows))
+    return False
+
+
+def item_from_document(blocks: list[str], form: str, section: str) -> str | None:
+    """Find an item in the full document by its own "Item N." heading.
 
     Used when edgartools' section map comes back too short, which happens when
     a filer puts items out of the usual order (Capital One's 10-Q places MD&A
     before the financial statements). The table of contents also lists every
     heading, so the occurrence with the most text before the next item wins."""
     start = ITEM_HEADING[form][section]
-    try:
-        paras = paragraphs(clean(report.document.text()))
-    except Exception:
-        return None
     best: str | None = None
-    for begin, p in enumerate(paras):
+    for begin, p in enumerate(blocks):
         if not start.match(p):
             continue
-        end = next((i for i in range(begin + 1, len(paras)) if ANY_ITEM_HEADING.match(paras[i])), len(paras))
-        body = "\n\n".join(paras[begin:end])
+        end = next((i for i in range(begin + 1, len(blocks)) if is_item_heading(blocks[i])), len(blocks))
+        body = "\n\n".join(blocks[begin:end])
         if best is None or word_count(body) > word_count(best):
             best = body
     return best
 
 
-def item_text(report, form: str, section: str) -> tuple[str | None, str]:
+def _anchor_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", text.lower())[:ANCHOR_CHARS]
+
+
+def _is_prose(p: str) -> bool:
+    return (word_count(p) >= 8 and SENTENCE_END.search(p.rstrip())
+            and not re.search(r" {3,}|[│─┼]", p) and not is_table(p))
+
+
+def locate_in_blocks(plain: str, blocks: list[str]) -> str | None:
+    """The run of `blocks` holding the same item as edgartools' `plain` text.
+
+    edgartools decides where an item starts and ends but flattens its tables;
+    `blocks` has the tables intact. The item's first and last prose paragraphs
+    are found in `blocks`, and the span is widened to take in the item heading
+    before and any tables after. When a paragraph occurs more than once (the
+    business overview often repeats), the span closest in length wins."""
+    prose = [p for p in paragraphs(plain) if _is_prose(p)]
+    if not prose:
+        return None
+    keys = [_anchor_key(b) if not is_table(b) else "" for b in blocks]
+    first, last = _anchor_key(prose[0]), _anchor_key(prose[-1])
+    starts = [i for i, k in enumerate(keys) if k and k.startswith(first)]
+    ends = [i for i, k in enumerate(keys) if k and k.startswith(last)]
+    target = word_count(plain)
+    best: tuple[float, int, int] | None = None
+    for i in starts:
+        # Widen backwards over the headings just before the first paragraph.
+        begin = i
+        while begin > 0 and i - begin < 3 and word_count(blocks[begin - 1]) <= 12 \
+                and not is_table(blocks[begin - 1]) and not is_item_heading(blocks[begin - 1]):
+            begin -= 1
+        if begin > 0 and ANY_ITEM_HEADING.match(blocks[begin - 1]):
+            begin -= 1
+        for j in ends:
+            if j < i:
+                continue
+            # Widen forwards to the next item heading, if it is close.
+            end = next((k for k in range(j + 1, min(len(blocks), j + 1 + MAX_TRAILING_BLOCKS))
+                        if is_item_heading(blocks[k])), j + 1)
+            words = sum(word_count(b) for b in blocks[begin:end])
+            gap = abs(words - target) / target
+            if best is None or gap < best[0]:
+                best = (gap, begin, end)
+    if best is None or best[0] > MAX_LENGTH_GAP:
+        return None
+    return "\n\n".join(blocks[best[1]:best[2]])
+
+
+def item_text(report, form: str, section: str, blocks: list[str]) -> tuple[str | None, str]:
     found: tuple[str, str] | None = None
     for key in ITEM_KEYS[form][section]:
         try:
@@ -168,13 +244,19 @@ def item_text(report, form: str, section: str) -> tuple[str | None, str]:
             break
     # A suspiciously short MD&A usually means the section map is wrong.
     if section == "mdna" and (found is None or word_count(found[0]) < MIN_MDNA_WORDS):
-        fallback = item_from_document(report, form, section)
+        fallback = item_from_document(blocks, form, section)
         if fallback and word_count(fallback) > word_count(found[0] if found else ""):
             label = ITEM_KEYS[form][section][0]
             return fallback, f"{label} (located in full document text)"
-    if found:
-        return found
-    return None, " / ".join(ITEM_KEYS[form][section])
+    if not found:
+        return None, " / ".join(ITEM_KEYS[form][section])
+    plain, key = found
+    with_tables = locate_in_blocks(plain, blocks)
+    if with_tables:
+        return with_tables, key
+    if re.search(r"[│─┼]| {3,}\S+ {3,}", plain):
+        return plain, f"{key} (plain text: tables could not be rebuilt)"
+    return plain, key
 
 
 def find_note(report, title: re.Pattern, exclude: re.Pattern | None = None) -> Section:
@@ -186,17 +268,27 @@ def find_note(report, title: re.Pattern, exclude: re.Pattern | None = None) -> S
         return Section(None, "filing has no XBRL footnotes")
     for note in notes:
         if title.search(note.title) and not (exclude and exclude.search(note.title)):
-            text = clean(note.text or "")
+            text = note_text(note)
             if text:
                 return Section(text, f"Note: {note.title}")
             return Section(None, f"note '{note.title}' exists but has no text")
     return Section(None, "no footnote with a matching title")
 
 
-def extract_sections(report, form: str) -> dict[str, Section]:
-    out: dict[str, Section] = {}
+def note_text(note) -> str:
+    """A footnote's text with its tables as markdown (plain text if no HTML)."""
+    html = note.html
+    if html:
+        return "\n\n".join(document_blocks(html))
+    return clean(note.text or "")
 
-    mdna, mdna_key = item_text(report, form, "mdna")
+
+def extract_sections(report, form: str, html: str) -> dict[str, Section]:
+    """`html` is the filing's primary document; tables are rebuilt from it."""
+    out: dict[str, Section] = {}
+    blocks = document_blocks(html)
+
+    mdna, mdna_key = item_text(report, form, "mdna", blocks)
     out["mdna"] = Section(mdna, mdna_key) if mdna else Section(None, f"{mdna_key} not found")
 
     if mdna:
@@ -208,7 +300,7 @@ def extract_sections(report, form: str) -> dict[str, Section]:
     else:
         out["liquidity"] = Section(None, "MD&A not found")
 
-    mr, mr_key = item_text(report, form, "market_risk")
+    mr, mr_key = item_text(report, form, "market_risk", blocks)
     if not mr:
         out["market_risk"] = Section(None, f"{mr_key} not found")
     elif word_count(mr) <= XREF_MAX_WORDS and XREF_HINT.search(mr) and mdna:
@@ -232,11 +324,12 @@ def extract_sections(report, form: str) -> dict[str, Section]:
 
 def fallback_excerpts(report, section: str, missing_reason: str,
                       item_sources: list[tuple[str, str | None]]) -> Section:
-    """Paragraphs from other footnotes and items that discuss `section`.
+    """Paragraphs and tables from other footnotes and items that discuss `section`.
 
-    Every excerpt starts with a "[FALLBACK ...]" tag naming where it came
-    from, so a chunk stays traceable even when cited on its own. Footnotes
-    come first because they carry the hard numbers."""
+    Every excerpt is preceded by a "[FALLBACK ...]" tag naming where it came
+    from (on its own line, so a table under it stays a table); chunk() keeps
+    each tag with its excerpt, so a chunk stays traceable when cited on its
+    own. Footnotes come first because they carry the hard numbers."""
     terms = FALLBACK_TERMS[section]
     excerpts: list[tuple[str, str]] = []
     try:
@@ -244,7 +337,7 @@ def fallback_excerpts(report, section: str, missing_reason: str,
     except Exception:
         notes = []
     for note in notes:
-        for p in paragraphs(clean(note.text or "")):
+        for p in paragraphs(note_text(note)):
             if word_count(p) >= FALLBACK_MIN_WORDS and terms.search(p):
                 excerpts.append((f"Note: {note.title}", p))
     for key, text in item_sources:
@@ -272,27 +365,68 @@ def fallback_excerpts(report, section: str, missing_reason: str,
         kept.append((where, p))
         total += n
     locations = list(dict.fromkeys(where for where, _ in kept))
-    text = "\n\n".join(f"[FALLBACK - from {where}] {p}" for where, p in kept)
+    text = "\n\n".join(f"{FALLBACK_TAG.format(where=where)}\n\n{p}" for where, p in kept)
     source = f"FALLBACK ({missing_reason}) - excerpts from: " + "; ".join(locations)
     if truncated:
         source += f" (first {FALLBACK_MAX_WORDS:,} words of {len(excerpts)} matching paragraphs)"
     return Section(text, source, fallback=True)
 
 
+def _units(text: str) -> list[str]:
+    """Paragraphs, with each fallback tag kept together with the excerpt after it."""
+    units: list[str] = []
+    glue = False
+    for p in paragraphs(text):
+        if glue:
+            units[-1] += "\n\n" + p
+        else:
+            units.append(p)
+        glue = bool(FALLBACK_TAG_LINE.match(p))
+    return units
+
+
+def _split_oversized(unit: str, target_words: int) -> list[str]:
+    """Break a unit bigger than a chunk: tables by rows (header repeated on
+    every piece), prose on word boundaries."""
+    lines = unit.split("\n")
+    table_at = next((i for i, ln in enumerate(lines) if ln.startswith("|")), None)
+    if table_at is not None and all(ln.startswith("|") for ln in lines[table_at:]):
+        lead = "\n".join(lines[:table_at]).strip()
+        header, body = lines[table_at:table_at + 2], lines[table_at + 2:]
+        pieces, rows, size = [], [], 0
+        for row in body:
+            n = word_count(row)
+            if rows and size + n > target_words:
+                pieces.append(rows)
+                rows, size = [], 0
+            rows.append(row)
+            size += n
+        if rows:
+            pieces.append(rows)
+        out = []
+        for k, rows in enumerate(pieces):
+            note = f"(table continued, part {k + 1} of {len(pieces)})" if len(pieces) > 1 else ""
+            prefix = "\n\n".join(x for x in (lead, note) if x)
+            out.append((prefix + "\n\n" if prefix else "") + "\n".join(header + rows))
+        return out
+    words = unit.split()
+    return [" ".join(words[i:i + target_words]) for i in range(0, len(words), target_words)]
+
+
 def chunk(text: str, target_words: int = 1500) -> list[str]:
     """Split at paragraph breaks into pieces of about `target_words`.
-    A single paragraph longer than the target is split on word boundaries."""
+    Tables are never cut mid-row; a unit longer than the target is split
+    on its own (see _split_oversized)."""
     pieces: list[str] = []
     current: list[str] = []
     size = 0
-    for p in paragraphs(text):
+    for p in _units(text):
         n = word_count(p)
         if n > target_words:
             if current:
                 pieces.append("\n\n".join(current))
                 current, size = [], 0
-            words = p.split()
-            pieces.extend(" ".join(words[i:i + target_words]) for i in range(0, n, target_words))
+            pieces.extend(_split_oversized(p, target_words))
             continue
         if current and size + n > target_words:
             pieces.append("\n\n".join(current))
