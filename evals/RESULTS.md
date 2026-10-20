@@ -90,3 +90,108 @@ Raw-scorer misses that the scorer fixes resolved (2 more, plus GPN cash):
 
 Both open questions are in the KNOWN_ISSUES.md V2 backlog, with proposals.
 Testing them needs a fresh held-out set.
+
+## Tool-using agent (feature/agentic, 2026-10-20)
+
+`agents/agentic.py` with `skills/liquidity/SKILL.md`, at most 15 tool calls per
+run. The skill's field rules are DEFINITIONS.md verbatim, and nothing was tuned
+to the held-out or new tickers.
+
+| Set | Score | Confidence (fields; correct of scored) |
+| --- | --- | --- |
+| Tuned (AXP, COF, SYF, V, MA), vs answer key | **20/20 = 100%** | high 15 (15/15), medium 5 (5/5), low 0 |
+| Held-out (PYPL, ALLY, FIS, GPN), vs XBRL | **15/16 = 94%** | high 15 (15/15), medium 1 (0/1), low 0 |
+| New (JPM, AAPL, KO, F, DAL), vs XBRL | **10/13 = 77%**, 7 unscored (7/13 before scorer fix 4) | high 16 (10/13), medium 4 (0 scored), low 0 |
+
+Results files: `agent_results_agentic.csv`, `heldout_results_agentic.csv`,
+`newtickers_results_agentic.csv`.
+
+**Leak check** (`evals/leak_check.py --agentic`): **PASS**.
+- **Static:** the agent code names no `evals/` path at all.
+- **Runtime:** across real runs of the 5 tuned tickers, the agent opened
+  nothing under `evals/`, not even DEFINITIONS.md, and only each ticker's own
+  cache folders.
+- **Skill:** SKILL.md's rules match DEFINITIONS.md word for word.
+
+Confidence is computed by the pipeline, not the model. The agent names the
+XBRL tags its value should equal, and the pipeline recomputes them from the
+filing's real facts:
+- **high:** they agree
+- **medium:** no XBRL fact (text only), or not_disclosed
+- **low:** they conflict
+
+"High" therefore means some real XBRL facts sum to the value. It doesn't mean
+the agent picked the same tags as the scorer, which is why 3 high-confidence
+DAL fields are scored as misses (below).
+
+**Held-out.** 15/16, against 12/16 for v1. ALLY debt_due_within_12m is still a
+miss: the agent answered not_disclosed, which is the same definition question
+as before. GPN now matches. The agent left the settlement credit lines out of
+debt, reasoning from what they are for (merchant settlement funding, like the
+customer-deposits exclusion). That's the exclusion the V2 backlog proposes,
+though neither the backlog nor any held-out result is in the agent's context.
+The agent can read XBRL, which is also the held-out scorer's ground truth. The
+ablation below shows the GPN answer doesn't depend on it: with
+`get_xbrl_facts` disabled, the agent excludes the settlement lines in the same
+way and gets the same 15/16.
+
+**New tickers.** These are unseen, and the rules were not changed for them.
+
+| Ticker | Field(s) | Agent | XBRL expected | Verdict |
+| --- | --- | --- | --- | --- |
+| KO | total_debt, net_debt, debt_due_within_12m | 43,543 / 30,636 / 6,542 | was 43,495 / 30,588 / 6,494 | **Scorer wrong (missing tag), now fixed** (SCORER_FIXES.md, fix 4). KO tags its "Loans and notes payable" line (48) as `NotesAndLoansPayable`, which the scorer didn't count as short-term debt. All three fields now match. |
+| DAL | total_debt, net_debt, debt_due_within_12m | 12,851 / 9,064 / 3,324 | 12,105 / 8,318 / 2,981 | **Definition ambiguity (finance leases)**, now in the KNOWN_ISSUES.md V2 backlog. DAL's balance-sheet lines are "Current maturities of debt and finance leases" (3,324) and "Debt and finance leases" (9,527). The agent took the balance-sheet lines as the rules say. The scorer's XBRL recipe uses the debt-only tags `LongTermDebtCurrent` / `LongTermDebtNoncurrent`. The agent's notes give both figures. |
+
+Unscored (no usable XBRL): all 4 JPM fields (cash only tagged including
+restricted cash; no long-term debt tag) and Ford's 3 debt fields (no standard
+debt tags). JPM: cash 24,720 ("Cash and due from banks"), total_debt 532,953,
+debt_due_within_12m not_disclosed (unclassified bank balance sheet). Ford: the
+agent includes Ford Credit's debt (total 160,967), which is a candidate V2
+question for captive-finance debt. Ford's total_debt is a 4-term sum, so it
+counts as "untraced" under the 3-term citation limit.
+
+Citations on the new tickers: direct 6/19 = 32%, traceable 17/19 = 89% (the two
+untraced values are Ford's 4-line sum and the net_debt built on it).
+
+## Ablation: text only vs with XBRL (2026-10-20)
+
+Same tool-using agent and skill, run with `get_xbrl_facts` removed (`--no-xbrl`;
+the agent is told the tool is disabled and to leave `xbrl_expression` empty).
+All sets are scored with the same scorers, including fix 4.
+
+| Set | Text only | With XBRL | Values identical |
+| --- | --- | --- | --- |
+| Tuned (vs answer key) | **20/20** | **20/20** | 20/20 fields |
+| Held-out (vs XBRL) | **15/16** | **15/16** | 16/16 fields |
+| New tickers (vs XBRL) | **10/13**, 7 unscored | **10/13**, 7 unscored | 20/20 fields, unscored ones too |
+| Confidence | all medium (by construction) | high 46, medium 10, low 0 | |
+
+Every one of the 56 fields came out the same with and without XBRL, so the
+scores tie and the remaining misses (ALLY, DAL) don't change.
+
+**Why both runs matter:**
+- **Text only measures extraction.** The held-out and new-ticker scorers use
+  XBRL as ground truth. If the agent could only match XBRL by reading it, those
+  scores would measure copying, not reading the filing. With the tool removed,
+  the agent can't see the answer, so 15/16 and 10/13 are real extraction
+  scores. The GPN settlement-line decision in particular is made from the
+  filing text.
+- **With XBRL measures trust.** Accuracy is the same, but the with-XBRL run
+  tells you which numbers to trust. 46 of 56 values are independently
+  confirmed by the filing's own tagged facts (high confidence), and the other
+  10 are flagged as text only (medium) for a human to check. Without XBRL every
+  value is medium, and a reader can't tell a confirmed number from an
+  unconfirmed one.
+- **Watch for drift.** If a future change makes the with-XBRL score beat text
+  only, the agent has started leaning on XBRL for values. That would make the
+  XBRL-scored results circular. Rerunning both is the check.
+
+**Run note.** During the text-only run of the new tickers, an API connection
+stalled. AAPL failed with a read timeout and JPM with a connection reset. Both
+were re-run on their own, and their rows were merged into
+`newtickers_results_agentic_textonly.csv`. The agent now sets a 180s read
+timeout on the API and a 120s timeout per tool call, so a stall fails fast
+instead of hanging.
+
+Results files: `agent_results_agentic_textonly.csv`,
+`heldout_results_agentic_textonly.csv`, `newtickers_results_agentic_textonly.csv`.

@@ -11,7 +11,14 @@ Three checks:
   rules     DEFINITIONS.md (the one evals/ file the agent does read) holds
             none of the answer key's values.
 
-Run:  .venv/bin/python -m evals.leak_check [TICKER ...]   (default: the 5 key tickers)
+With --agentic the tool-using agent (agents/agentic.py) is checked instead.
+It reads its rules from skills/liquidity/SKILL.md, so any open under evals/
+at all is a leak, and one more check runs:
+
+  skill     the field rules in SKILL.md match DEFINITIONS.md word for word
+            (they are copied, so this catches drift)
+
+Run:  .venv/bin/python -m evals.leak_check [--agentic] [TICKER ...]   (default: the 5 key tickers)
 """
 
 import csv
@@ -27,6 +34,9 @@ EVALS = ROOT / "evals"
 DEFINITIONS = EVALS / "DEFINITIONS.md"
 KEY = EVALS / "answer_key_liquidity.csv"
 AGENT_CODE = [ROOT / "agents" / "liquidity.py", *sorted((ROOT / "data_layer").glob("*.py"))]
+AGENTIC_CODE = [ROOT / "agents" / n for n in ("agentic.py", "tools.py", "skills.py")] + \
+    sorted((ROOT / "data_layer").glob("*.py"))
+SKILL = ROOT / "skills" / "liquidity" / "SKILL.md"
 
 
 @contextmanager
@@ -47,21 +57,32 @@ def trace_opens():
         active[0] = False
 
 
-def evals_leaks(opened: set[Path]) -> list[Path]:
-    """Opened files under evals/ other than DEFINITIONS.md."""
-    return sorted(p for p in opened if p.is_relative_to(EVALS) and p != DEFINITIONS)
+def evals_leaks(opened: set[Path], allowed: set[Path] = frozenset({DEFINITIONS})) -> list[Path]:
+    """Opened files under evals/ other than `allowed`."""
+    return sorted(p for p in opened if p.is_relative_to(EVALS) and p not in allowed)
 
 
-def static_check() -> list[str]:
+def skill_check() -> list[str]:
+    """Rules in SKILL.md that differ from DEFINITIONS.md."""
+    d = DEFINITIONS.read_text()
+    rules = d[d.index("## General rules"):d.index("## Out of scope for v1")].strip()
+    rules = rules.replace("## General rules", "### General rules").replace("## Fields", "### Fields")
+    skill = SKILL.read_text()
+    block = skill[skill.index("<!-- BEGIN DEFINITIONS -->"):skill.index("<!-- END DEFINITIONS -->")]
+    return [] if rules in block else ["SKILL.md field rules differ from DEFINITIONS.md"]
+
+
+def static_check(code: list[Path] = AGENT_CODE, allow_definitions: bool = True) -> list[str]:
+    allowed = ("evals", "DEFINITIONS.md") if allow_definitions else ()
     problems = []
-    for path in AGENT_CODE:
+    for path in code:
         for n, line in enumerate(path.read_text().splitlines(), 1):
             code = line.split("#", 1)[0]
             if re.search(r"^\s*(from|import)\s+evals\b", code):
                 problems.append(f"{path.relative_to(ROOT)}:{n} imports evals: {line.strip()}")
             for m in re.finditer(r"""["']([^"']*)["']""", code):
                 s = m.group(1)
-                if ("evals" in s or "answer_key" in s) and s not in ("evals", "DEFINITIONS.md"):
+                if ("evals" in s or "answer_key" in s or "DEFINITIONS" in s) and s not in allowed:
                     problems.append(f"{path.relative_to(ROOT)}:{n} names {s!r}")
     return problems
 
@@ -82,18 +103,24 @@ def rules_check() -> list[str]:
 
 def main() -> None:
     load_dotenv()
-    from agents.liquidity import run  # noqa: PLC0415 - imported here so the trace covers its file reads too
+    agentic = "--agentic" in sys.argv[1:]
+    # Imported here so the trace covers the agent's own file reads too.
+    if agentic:
+        from agents.agentic import run  # noqa: PLC0415
+    else:
+        from agents.liquidity import run  # noqa: PLC0415
 
     with KEY.open() as f:
         default = list(dict.fromkeys(r["ticker"] for r in csv.DictReader(f)))
-    tickers = [t.upper() for t in sys.argv[1:]] or default
+    tickers = [t.upper() for t in sys.argv[1:] if not t.startswith("--")] or default
 
-    static = static_check()
+    static = static_check(AGENTIC_CODE, allow_definitions=False) if agentic else static_check()
     rules = rules_check()
+    skill = skill_check() if agentic else []
     with trace_opens() as opened:
         for t in tickers:
             run(t)
-    leaks = evals_leaks(opened)
+    leaks = evals_leaks(opened, set() if agentic else {DEFINITIONS})
     under_evals = sorted(p.relative_to(ROOT) for p in opened if p.is_relative_to(EVALS))
     data_files = sorted({str(p.relative_to(ROOT).parent) for p in opened if p.is_relative_to(ROOT / "data")})
 
@@ -101,12 +128,14 @@ def main() -> None:
     for p in static:
         print(f"         {p}")
     print(f"rules:   {'PASS' if not rules else 'FAIL'} (answer-key values in DEFINITIONS.md: {rules or 'none'})")
+    if agentic:
+        print(f"skill:   {'PASS' if not skill else 'FAIL'} {'; '.join(skill) or '(SKILL.md rules match DEFINITIONS.md)'}")
     print(f"runtime: {'PASS' if not leaks else 'FAIL'} ({len(tickers)} tickers: {', '.join(tickers)})")
     print(f"         files opened under evals/: {', '.join(map(str, under_evals)) or 'none'}")
     print(f"         cache folders read: {', '.join(data_files)}")
     for p in leaks:
         print(f"         LEAK: {p.relative_to(ROOT)}")
-    sys.exit(1 if static or rules or leaks else 0)
+    sys.exit(1 if static or rules or leaks or skill else 0)
 
 
 if __name__ == "__main__":

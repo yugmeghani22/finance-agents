@@ -54,9 +54,11 @@ cell. Render text-only grids with two or more columns as markdown tables.
 
 ## V2 backlog
 
-Definition questions the held-out test (PYPL, ALLY, FIS, GPN) turned up. They
+Definition questions the held-out test (PYPL, ALLY, FIS, GPN) and the
+new-ticker test (JPM, AAPL, KO, F, DAL) turned up. They
 are deliberately **not** changed in v1: DEFINITIONS.md was not edited on the
-basis of held-out results, and those four tickers now count as seen. Any change
+basis of held-out or new-ticker results, and those nine tickers now count as
+seen. Any change
 below needs a **fresh held-out set** (tickers not used for v1 or this
 backlog) to measure it.
 
@@ -77,6 +79,32 @@ primarily by timing of month-end and transaction volume") and sit with
 settlement obligations rather than corporate funding. Add to the
 `total_debt` rule: "Exclude settlement lines of credit and other borrowings
 restricted to funding settlement."
+
+### Finance leases in debt (DAL)
+
+**Question:** do finance lease liabilities count toward `total_debt` and
+`debt_due_within_12m`?
+
+**Case:** DAL's 10-Q balance sheet (June 30, 2026) combines them: "Current
+maturities of debt and finance leases" 3,324 and "Debt and finance leases"
+9,527 (total 12,851). The debt note's total excluding finance leases is 12,105
+(XBRL `LongTermDebtCurrent` 2,981 + `LongTermDebtNoncurrent` 9,124), a $746m
+difference. The tool-using agent took the balance-sheet lines, as the
+current-debt rule says ("under whatever name the filer uses"). The XBRL scorer
+used the debt-only tags, so all three DAL debt fields score as misses.
+DEFINITIONS.md doesn't mention leases. In the tuned key, COF's long-term debt
+already includes $20m of finance leases.
+
+**Proposed:** include finance leases in debt. They are contractual,
+interest-bearing obligations, many filers present them on the same lines, and
+it matches the balance-sheet-line rule. Operating leases stay excluded. Add to
+the `total_debt` rule: "Include finance lease liabilities; exclude operating
+lease liabilities." Then have the XBRL scorer use
+`LongTermDebtAndCapitalLeaseObligations*` tags when the balance sheet
+presents debt and finance leases together.
+
+**Test on a fresh ticker set.** DAL and the other new tickers (JPM, AAPL, KO,
+F) have now been seen, like the held-out four.
 
 ### Current-debt precedence for banks (ALLY)
 

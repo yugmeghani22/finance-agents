@@ -31,11 +31,17 @@ Two citation checks, reported alongside the score (they don't change it):
                    Direct % = direct / found values; traceable % = (direct +
                    traceable) / found values.
 
-Run:  .venv/bin/python -m evals.score_agent
-      .venv/bin/python -m evals.score_agent --rescore
-          re-scores the agent outputs already in evals/agent_results.csv
+With --agentic the tool-using agent (agents/agentic.py) is scored instead of
+the v1 single-call agent, and each row also gets its confidence (high /
+medium / low) and the XBRL value it was checked against. Add --no-xbrl to
+run it with get_xbrl_facts disabled (text only, the XBRL ablation).
+
+Run:  .venv/bin/python -m evals.score_agent [--agentic]
+      .venv/bin/python -m evals.score_agent [--agentic] --rescore
+          re-scores the agent outputs already in the results file
           (no API calls)
-Writes evals/agent_results.csv.
+Writes evals/agent_results.csv (--agentic: evals/agent_results_agentic.csv;
+--agentic --no-xbrl: evals/agent_results_agentic_textonly.csv).
 """
 
 import csv
@@ -48,18 +54,54 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
-from agents.liquidity import FIELDS, load_chunks, run
+from agents.liquidity import FIELDS
+from agents.liquidity import run as run_v1
+from data_layer.extract import SECTIONS
+from data_layer.store import load_sections
 
 HERE = Path(__file__).resolve().parent
 KEY = HERE / "answer_key_liquidity.csv"
 OUT = HERE / "agent_results.csv"
+OUT_AGENTIC = HERE / "agent_results_agentic.csv"
 ROUNDING_M = 50  # $0.1bn rounding, per DEFINITIONS.md
 BILLIONS = re.compile(r"billion|\(billions\)", re.I)
 QUOTE_NUMBER = re.compile(r"(?<![\w.])\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s*(billion|million))?", re.I)
 MAX_TERMS = 3  # numbers combined from one quote
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "agent_status", "unit", "as_of",
-           "source_chunk_id", "quote_in_chunk", "citation", "citation_trace", "evidence_quote", "notes", "error"]
+           "source_chunk_id", "quote_in_chunk", "citation", "citation_trace", "confidence", "confidence_reason", "xbrl_value",
+           "tool_calls", "evidence_quote", "notes", "error", "log_path"]
+AGENT_EXTRA = ["confidence", "confidence_reason", "xbrl_value", "tool_calls", "log_path"]
+
+
+TEXT_ONLY = ("get_xbrl_facts",)
+
+
+def agent_runner(agentic: bool, text_only: bool = False):
+    """The agent's run(ticker, client). text_only: the agentic agent without
+    get_xbrl_facts (the XBRL ablation)."""
+    if agentic:
+        from agents.agentic import run  # noqa: PLC0415
+        if text_only:
+            return lambda ticker, client=None: run(ticker, client, disabled_tools=TEXT_ONLY)
+        return run
+    return run_v1
+
+
+def citable_chunks(ticker: str) -> dict[str, str]:
+    """Text of every id an agent can cite: section chunks of both forms, and
+    (for the agentic agent) the full-filing blocks search_filing returns."""
+    from agents import tools  # noqa: PLC0415
+
+    out = {}
+    for form in ("10-Q", "10-K"):
+        for section in SECTIONS:
+            out.update({c["id"]: c["text"] for c in load_sections(ticker, form, section)})
+        try:
+            out.update(tools.filing_blocks(ticker, form))
+        except tools.ToolError:
+            pass
+    return out
 
 
 def load_key() -> dict[tuple[str, str], str]:
@@ -213,22 +255,23 @@ def agent_rows_from_csv(path: Path) -> dict[str, dict[str, dict]]:
             out.setdefault(r["ticker"], {})[r["field"]] = {
                 "value": value, "status": r["agent_status"], "unit": r.get("unit", ""), "as_of": r["as_of"],
                 "source_chunk_id": r["source_chunk_id"], "evidence_quote": r["evidence_quote"],
-                "notes": r["notes"], "error": r["error"]}
+                "notes": r["notes"], "error": r["error"],
+                **{k: r.get(k, "") for k in AGENT_EXTRA}}
     return out
 
 
 def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic | None,
-                 saved: dict | None = None) -> list[dict]:
+                 saved: dict | None = None, agentic: bool = False, text_only: bool = False) -> list[dict]:
     if saved is not None:
         agent_rows = saved.get(ticker, {})
         error = next((r["error"] for r in agent_rows.values() if r.get("error")), "")
     else:
         try:
-            agent_rows = {r["field"]: r for r in run(ticker, client)}
+            agent_rows = {r["field"]: r for r in agent_runner(agentic, text_only)(ticker, client)}
             error = ""
         except Exception as e:  # one ticker failing shouldn't sink the run
             agent_rows, error = {}, f"{type(e).__name__}: {e}"
-    chunks = {c["id"]: c["text"] for c in load_chunks(ticker)}
+    chunks = citable_chunks(ticker)
     out = []
     for field in FIELDS:
         expected = key[(ticker, field)]
@@ -241,9 +284,25 @@ def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic | None,
             "source_chunk_id": r.get("source_chunk_id", ""),
             "quote_in_chunk": quote_in_chunk(r, chunks) if r else "N/A",
             "evidence_quote": r.get("evidence_quote", ""), "notes": r.get("notes", ""), "error": error,
+            **{k: r.get(k, "") for k in AGENT_EXTRA},
         })
     add_citations(out)
     return out
+
+
+def print_confidence(rows: list[dict]) -> None:
+    rated = [r for r in rows if r.get("confidence")]
+    if not rated:
+        return
+    print("\nConfidence:")
+    for level in ("high", "medium", "low"):
+        rs = [r for r in rated if r["confidence"] == level]
+        scored = [r for r in rs if r["match"] not in ("unscored",)]
+        right = sum(r["match"] not in ("miss", "unscored") for r in scored)
+        print(f"  {level:<7}{len(rs):>3} fields, {right}/{len(scored)} correct")
+    for r in rated:
+        if r["confidence"] == "low":
+            print(f"    low: {r['ticker']}/{r['field']}: {r['confidence_reason']}")
 
 
 def print_report(rows: list[dict]) -> None:
@@ -255,6 +314,7 @@ def print_report(rows: list[dict]) -> None:
         fr = [r for r in rows if r["field"] == field]
         print(f"  {field:<22} {sum(r['match'] != 'miss' for r in fr)}/{len(fr)}")
     print_citations(rows)
+    print_confidence(rows)
     bad_quotes = [r for r in rows if r["quote_in_chunk"].startswith("FAIL")]
     if bad_quotes:
         print(f"\nQuotes not found verbatim in the cited chunk: "
@@ -275,20 +335,24 @@ def main() -> None:
     load_dotenv()
     key = load_key()
     tickers = list(dict.fromkeys(t for t, _ in key))
+    agentic = "--agentic" in sys.argv[1:]
+    text_only = agentic and "--no-xbrl" in sys.argv[1:]
+    out = (HERE / "agent_results_agentic_textonly.csv") if text_only else (OUT_AGENTIC if agentic else OUT)
     if "--rescore" in sys.argv[1:]:
-        saved = agent_rows_from_csv(OUT)
-        results = [score_ticker(t, key, None, saved) for t in tickers]
+        saved = agent_rows_from_csv(out)
+        results = [score_ticker(t, key, None, saved, agentic) for t in tickers]
     else:
         client = anthropic.Anthropic()
         with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
-            results = list(pool.map(lambda t: score_ticker(t, key, client), tickers))
+            results = list(pool.map(lambda t: score_ticker(t, key, client, agentic=agentic,
+                                                           text_only=text_only), tickers))
     rows = [r for ticker_rows in results for r in ticker_rows]
-    with OUT.open("w", newline="") as f:
+    with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
         w.writerows(rows)
     print_report(rows)
-    print(f"\nWrote {OUT.relative_to(HERE.parent)}")
+    print(f"\nWrote {out.relative_to(HERE.parent)}")
 
 
 if __name__ == "__main__":
