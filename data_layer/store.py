@@ -2,7 +2,7 @@
 
 Layout:
     data/cache/{ticker}/{form}_{filing_date}/
-        manifest.json      filing metadata + status per section:
+        manifest.json      filing metadata (incl. period_of_report) + status per section:
                            found / fallback / missing
         {section}.json     list of chunk records (found and fallback sections)
 
@@ -62,6 +62,12 @@ def load_sections(ticker: str, form: str, section: str) -> list[dict]:
         return []
     path = dirs[0] / f"{section}.json"
     return json.loads(path.read_text()) if path.exists() else []
+
+
+def period_of_report(ticker: str, form: str) -> str | None:
+    """Balance-sheet date of the latest cached filing of `form`, if recorded."""
+    dirs = filing_dirs(ticker, form)
+    return read_manifest(dirs[0]).get("period_of_report") if dirs else None
 
 
 def list_available(ticker: str) -> list[dict]:

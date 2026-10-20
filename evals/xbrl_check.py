@@ -33,9 +33,10 @@ ALL_TAGS = set(CASH_TAGS + DEBT_PARTS + DEBT_FALLBACK + CURRENT_DEBT_TAGS)
 
 # ------------------------------------------------------------------ facts
 
-def load_facts(folder: Path, accession_no: str) -> list[dict]:
-    """Numeric facts for the mapped tags, cached as xbrl_facts.json."""
-    path = folder / "xbrl_facts.json"
+def load_facts(folder: Path, accession_no: str, tags: set[str] = ALL_TAGS,
+               cache_name: str = "xbrl_facts.json") -> list[dict]:
+    """Numeric facts for `tags` (default: the mapped tags), cached as `cache_name`."""
+    path = folder / cache_name
     if not path.exists():
         from edgar import get_by_accession_number  # noqa: PLC0415 - only on a cache miss
 
@@ -44,7 +45,7 @@ def load_facts(folder: Path, accession_no: str) -> list[dict]:
         facts = []
         for f in get_by_accession_number(accession_no).xbrl().facts.get_facts():
             tag = f["concept"].split(":")[-1]
-            if tag in ALL_TAGS and f.get("numeric_value") is not None and f.get("unit_ref", "").lower() == "usd":
+            if tag in tags and f.get("numeric_value") is not None and f.get("unit_ref", "").lower() == "usd":
                 facts.append({
                     "tag": tag,
                     "period_key": f.get("period_key"),

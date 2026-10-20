@@ -3,7 +3,7 @@
 Runs agents/liquidity.py on every ticker in the key and compares each field to
 the key's `value` column:
 
-  exact      same number, or both not_disclosed
+  exact      same number in whole $ millions, or both not_disclosed
   rounding   within the rounding DEFINITIONS.md allows: the agent's evidence
              is stated in billions (rounded to $0.1bn = ±$50m), so a value
              within $50m matches (±$100m for net_debt, which subtracts two
@@ -56,7 +56,9 @@ def compare(field: str, expected: str, got, evidence: str) -> str:
     e, g = as_number(expected), as_number(got)
     if e is None or g is None:
         return "miss"
-    if e == g:
+    # Values are in whole $ millions; a filer reporting in thousands gives the
+    # agent decimals (5,408,962k = 5,408.962m), which still equal 5,409.
+    if round(e) == round(g):
         return "exact"
     tolerance = ROUNDING_M * (2 if field == "net_debt" else 1)
     if BILLIONS.search(evidence or "") and abs(e - g) <= tolerance:

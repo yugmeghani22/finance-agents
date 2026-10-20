@@ -18,7 +18,7 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
-from data_layer import load_sections
+from data_layer import load_sections, period_of_report
 
 MODEL = "claude-opus-5-5"
 FIELDS = ["cash_and_equivalents", "total_debt", "net_debt", "debt_due_within_12m"]
@@ -129,12 +129,22 @@ def extract(ticker: str, client: anthropic.Anthropic | None = None) -> list[dict
     return [by_field[f] for f in FIELDS]
 
 
+def latest_period(ticker: str) -> str | None:
+    """Period end of the latest filing the agent reads (the 10-Q, else the 10-K)."""
+    return next((p for p in (period_of_report(ticker, f) for f in FORMS) if p), None)
+
+
 def run(ticker: str, client: anthropic.Anthropic | None = None) -> list[dict]:
-    """Rows in the answer-key shape: value is a number or "not_disclosed"."""
+    """Rows in the answer-key shape: value is a number or "not_disclosed".
+    A not_disclosed row's as_of is the latest filing's period end, so it
+    doesn't depend on what the model wrote there."""
     rows = []
+    period = latest_period(ticker)
     for r in extract(ticker, client):
         disclosed = r["status"] == "found" and r["value"] is not None
         value = r["value"] if disclosed else "not_disclosed"
+        if not disclosed and period:
+            r["as_of"] = period
         if isinstance(value, float) and value.is_integer():
             value = int(value)
         rows.append({"ticker": ticker.upper(), **r, "value": value,
