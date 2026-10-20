@@ -77,7 +77,11 @@ def total_debt(facts, period) -> tuple[float | None, str, str]:
         if len(v) > 1:
             return None, t, f"{t} has several values {v}"
     got = {t: v[0] for t, v in parts.items() if v}
-    if "LongTermDebtCurrent" in got or "LongTermDebtNoncurrent" in got:
+    if "DebtCurrent" in got and "LongTermDebtNoncurrent" in got:
+        # DebtCurrent is the whole current-debt line (short-term borrowings
+        # included), e.g. PYPL's "Short-term debt"; see SCORER_FIXES.md, fix 1.
+        used = ["DebtCurrent", "LongTermDebtNoncurrent"]
+    elif "LongTermDebtCurrent" in got or "LongTermDebtNoncurrent" in got:
         used = [t for t in DEBT_PARTS if t in got]
     elif "LongTermDebt" in got:
         short = [t for t in ("ShortTermBorrowings", "CommercialPaper") if t in got]

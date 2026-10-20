@@ -46,7 +46,7 @@ from dotenv import load_dotenv
 
 from agents.liquidity import FIELDS, run
 from data_layer.store import filing_dirs, read_manifest
-from evals.score_agent import compare
+from evals.score_agent import citation_coverage, compare, value_in_quote
 from evals.xbrl_check import ALL_TAGS, _values, load_facts, total_debt
 
 HERE = Path(__file__).resolve().parent
@@ -61,7 +61,7 @@ TAGS = ALL_TAGS | set(CURRENT_TAGS + NONCURRENT_TAGS)
 FACTS_CACHE = "xbrl_facts_heldout.json"
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "xbrl_tag", "xbrl_detail", "period",
-           "agent_status", "as_of", "source_chunk_id", "evidence_quote", "notes", "error"]
+           "agent_status", "as_of", "source_chunk_id", "value_in_quote", "evidence_quote", "notes", "error"]
 
 
 def period_of_report(folder: Path, accession_no: str) -> str:
@@ -190,7 +190,9 @@ def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | 
             "ticker": ticker, "field": field, "expected": expected, "got": got, "match": match,
             "xbrl_tag": tag, "xbrl_detail": detail, "period": period,
             "agent_status": r.get("status", ""), "as_of": r.get("as_of", ""),
-            "source_chunk_id": r.get("source_chunk_id", ""), "evidence_quote": r.get("evidence_quote", ""),
+            "source_chunk_id": r.get("source_chunk_id", ""),
+            "value_in_quote": value_in_quote(got, r.get("evidence_quote", ""), r.get("status", "")),
+            "evidence_quote": r.get("evidence_quote", ""),
             "notes": r.get("notes", ""), "error": error,
         })
     return rows
@@ -218,6 +220,10 @@ def main() -> None:
     print(f"\nHeld-out accuracy: {len(hits)}/{len(scored)}"
           + (f" = {len(hits) / len(scored):.0%}" if scored else "")
           + f"  ({len(rows) - len(scored)} unscored)")
+    covered, quoted, uncovered = citation_coverage(rows)
+    print(f"Citation coverage: {covered}/{quoted} = {covered / quoted:.0%} of found, directly quoted values")
+    for r in uncovered:
+        print(f"  not in quote: {r['ticker']}/{r['field']} = {r['got']}")
     unscored = [r for r in rows if r["match"] == "unscored"]
     if unscored:
         print("\nUnscored (no usable XBRL):")

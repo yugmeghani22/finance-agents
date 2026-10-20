@@ -51,3 +51,45 @@ Stable" label in issue 1.
 
 **Possible fix:** only use the layout-table path when rows have one non-empty
 cell. Render text-only grids with two or more columns as markdown tables.
+
+## V2 backlog
+
+Definition questions the held-out test (PYPL, ALLY, FIS, GPN) turned up. They
+are deliberately **not** changed in v1: DEFINITIONS.md was not edited on the
+basis of held-out results, and those four tickers now count as seen. Any change
+below needs a **fresh held-out set** (tickers not used for v1 or this
+backlog) to measure it.
+
+### Settlement lines of credit (GPN)
+
+**Question:** do borrowings under credit lines restricted to funding merchant
+settlement count toward `total_debt` and `debt_due_within_12m`?
+
+**Case:** GPN's 10-Q balance sheet has a separate "Settlement lines of credit"
+line ($1,136.8m at June 30, 2026) next to the current portion of long-term
+debt and long-term debt. The agent counted it, which gives total_debt 23,555
+against XBRL's 22,418 (and debt_due_within_12m 2,062 against 925). XBRL doesn't
+tag the line as debt. DEFINITIONS.md ("short-term borrowings + long-term
+debt") doesn't say either way.
+
+**Proposed:** exclude them from debt. They fund settlement timing (GPN: "affected
+primarily by timing of month-end and transaction volume") and sit with
+settlement obligations rather than corporate funding. Add to the
+`total_debt` rule: "Exclude settlement lines of credit and other borrowings
+restricted to funding settlement."
+
+### Current-debt precedence for banks (ALLY)
+
+**Question:** when the balance sheet has no current-portion line but XBRL tags
+`LongTermDebtCurrent` (from a debt note), which wins?
+
+**Case:** ALLY's balance sheet shows only "Short-term borrowings" (5,916) and
+"Long-term debt" (17,053), yet it tags `LongTermDebtCurrent` = 3,144. The agent
+followed the balance-sheet rule (`not_disclosed`). The XBRL scorer, following
+the tag DEFINITIONS.md names, expected 9,060. The rule's two parts disagree.
+
+**Proposed:** the bank rule wins. A balance sheet with no current-debt line means
+`not_disclosed`, even if a note or an XBRL tag gives a current portion. Extend
+the **Banks** sentence to say so and to cover bank holding companies beyond
+AXP/COF/SYF (ALLY). Have the XBRL scorer use `LongTermDebtCurrent` /
+`DebtCurrent` only when the tag is presented on the balance sheet.

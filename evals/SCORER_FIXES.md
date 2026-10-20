@@ -87,10 +87,12 @@ number.
 | GPN | net_debt | 18,146.13 | 17,009 | Follows from total_debt. |
 | GPN | debt_due_within_12m | 2,061.80 | 925 | Same settlement-lines question (925.032 + 1,136.764). |
 
-## Known follow-up
+## Follow-up: same fix in `evals/xbrl_check.py`
 
-`evals/xbrl_check.total_debt()` (used by `verify_key.py` for the tuned answer
-key) still has the Fix 1 logic and doesn't know the Fix 2 tags. It was left
-unchanged so as not to disturb the tuned key's verification marks. None of the
-5 tuned tickers is affected today: their total_debt rows either match XBRL or
-were approved by hand.
+`xbrl_check.total_debt()`, which `verify_key.py` uses for the tuned answer
+key, had the Fix 1 logic too. It now uses `DebtCurrent` + `LongTermDebtNoncurrent`
+when both are tagged (PYPL: 13,400). Re-running `verify_key` on the tuned key
+changed nothing: 0 of 20 rows differ in any column of
+`verification_results.csv` (status, xbrl_check or otherwise), and
+`answer_key_liquidity.csv` is byte-identical. It still doesn't know the Fix 2
+tags; none of the tuned tickers uses them.

@@ -10,9 +10,18 @@ the key's `value` column:
              rounded inputs)
   miss       anything else
 
-Also records whether the agent's evidence_quote appears verbatim in the chunk
-it cites (quote_in_chunk), as a check on its citations; it doesn't affect
-the score.
+Two citation checks, reported alongside the score (they don't change it):
+
+  quote_in_chunk   the agent's evidence_quote appears verbatim in the chunk it
+                   cites
+  value_in_quote   the reported value itself appears in the quote, read in
+                   $ millions, thousands (5,408,962 = 5,408.962m) or billions
+                   (within $0.1bn rounding). Citation coverage = % of found,
+                   directly quoted values with value_in_quote PASS. Derived
+                   values (quote "n/a - derived", e.g. net_debt) are left out;
+                   a value summed or adjusted from quoted lines (e.g. 2,032 +
+                   57,017) counts as not covered, since the quote doesn't
+                   contain it.
 
 Run:  .venv/bin/python -m evals.score_agent
 Writes evals/agent_results.csv.
@@ -33,9 +42,10 @@ KEY = HERE / "answer_key_liquidity.csv"
 OUT = HERE / "agent_results.csv"
 ROUNDING_M = 50  # $0.1bn rounding, per DEFINITIONS.md
 BILLIONS = re.compile(r"billion|\(billions\)", re.I)
+QUOTE_NUMBER = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?(?:\s*(billion|million))?", re.I)
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "agent_status", "unit", "as_of",
-           "source_chunk_id", "quote_in_chunk", "evidence_quote", "notes", "error"]
+           "source_chunk_id", "quote_in_chunk", "value_in_quote", "evidence_quote", "notes", "error"]
 
 
 def load_key() -> dict[tuple[str, str], str]:
@@ -83,6 +93,34 @@ def quote_in_chunk(row: dict, chunks: dict[str, str]) -> str:
     return "PASS" if all(any(p in normalize(t) for t in texts) for p in pieces) else "FAIL"
 
 
+def value_in_quote(value, quote: str, status: str) -> str:
+    """PASS if `value` ($m) appears in `quote`; N/A for not_disclosed or derived."""
+    quote = quote or ""
+    if status != "found" or not quote or quote.startswith("n/a"):
+        return "N/A"
+    v = as_number(value)
+    if v is None:
+        return "N/A"
+    for m in QUOTE_NUMBER.finditer(quote):
+        if re.fullmatch(r"(19|20)\d\d", m.group(0)):
+            continue  # a year ("2026, $ 165"), not an amount; filings write 2,026
+        n = float(m.group(0).split()[0].replace(",", ""))
+        if (m.group(1) or "").lower() == "billion":
+            if abs(n * 1000 - abs(v)) <= ROUNDING_M:
+                return "PASS"
+        elif round(n) == round(abs(v)) or (n >= 1000 and round(n / 1000) == round(abs(v))
+                                           and abs(n / 1000 - abs(v)) < 0.001):
+            return "PASS"
+    return "FAIL"
+
+
+def citation_coverage(rows: list[dict]) -> tuple[int, int, list[dict]]:
+    """(covered, quoted found values, the uncovered rows)."""
+    quoted = [r for r in rows if r["value_in_quote"] != "N/A"]
+    uncovered = [r for r in quoted if r["value_in_quote"] != "PASS"]
+    return len(quoted) - len(uncovered), len(quoted), uncovered
+
+
 def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic) -> list[dict]:
     try:
         agent_rows = {r["field"]: r for r in run(ticker, client)}
@@ -101,6 +139,7 @@ def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic) -> list[di
             "agent_status": r.get("status", ""), "unit": r.get("unit", ""), "as_of": r.get("as_of", ""),
             "source_chunk_id": r.get("source_chunk_id", ""),
             "quote_in_chunk": quote_in_chunk(r, chunks) if r else "N/A",
+            "value_in_quote": value_in_quote(got, r.get("evidence_quote", ""), r.get("status", "")),
             "evidence_quote": r.get("evidence_quote", ""), "notes": r.get("notes", ""), "error": error,
         })
     return out
@@ -114,6 +153,12 @@ def print_report(rows: list[dict]) -> None:
     for field in FIELDS:
         fr = [r for r in rows if r["field"] == field]
         print(f"  {field:<22} {sum(r['match'] != 'miss' for r in fr)}/{len(fr)}")
+    covered, quoted, uncovered = citation_coverage(rows)
+    print(f"\nCitation coverage: {covered}/{quoted} = {covered / quoted:.0%} of found, directly quoted values "
+          f"have the value in the quote ({sum(r['value_in_quote'] == 'N/A' and r['agent_status'] == 'found' for r in rows)}"
+          f" derived values excluded)")
+    for r in uncovered:
+        print(f"  not in quote: {r['ticker']}/{r['field']} = {r['got']}  ({r['notes'][:110]})")
     bad_quotes = [r for r in rows if r["quote_in_chunk"].startswith("FAIL")]
     if bad_quotes:
         print(f"\nQuotes not found verbatim in the cited chunk: "
