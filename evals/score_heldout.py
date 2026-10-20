@@ -46,7 +46,7 @@ from dotenv import load_dotenv
 
 from agents.liquidity import FIELDS, run
 from data_layer.store import filing_dirs, read_manifest
-from evals.score_agent import citation_coverage, compare, value_in_quote
+from evals.score_agent import add_citations, agent_rows_from_csv, compare, print_citations
 from evals.xbrl_check import ALL_TAGS, _values, load_facts, total_debt
 
 HERE = Path(__file__).resolve().parent
@@ -61,7 +61,7 @@ TAGS = ALL_TAGS | set(CURRENT_TAGS + NONCURRENT_TAGS)
 FACTS_CACHE = "xbrl_facts_heldout.json"
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "xbrl_tag", "xbrl_detail", "period",
-           "agent_status", "as_of", "source_chunk_id", "value_in_quote", "evidence_quote", "notes", "error"]
+           "agent_status", "as_of", "source_chunk_id", "citation", "citation_trace", "evidence_quote", "notes", "error"]
 
 
 def period_of_report(folder: Path, accession_no: str) -> str:
@@ -144,22 +144,6 @@ def xbrl_truth(facts: list[dict], period: str) -> dict[str, tuple[float | None, 
     return out
 
 
-def agent_rows_from_csv() -> dict[str, dict[str, dict]]:
-    """Agent outputs saved by an earlier run: ticker -> field -> agent row."""
-    out: dict[str, dict[str, dict]] = {}
-    with OUT.open() as f:
-        for r in csv.DictReader(f):
-            value = r["got"]
-            if value not in ("", "not_disclosed"):
-                n = float(value)
-                value = int(n) if n.is_integer() else n
-            out.setdefault(r["ticker"], {})[r["field"]] = {
-                "value": value, "status": r["agent_status"], "as_of": r["as_of"],
-                "source_chunk_id": r["source_chunk_id"], "evidence_quote": r["evidence_quote"],
-                "notes": r["notes"], "error": r["error"]}
-    return out
-
-
 def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | None = None) -> list[dict]:
     folder = filing_dirs(ticker, "10-Q")[0]
     manifest = read_manifest(folder)
@@ -191,10 +175,10 @@ def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | 
             "xbrl_tag": tag, "xbrl_detail": detail, "period": period,
             "agent_status": r.get("status", ""), "as_of": r.get("as_of", ""),
             "source_chunk_id": r.get("source_chunk_id", ""),
-            "value_in_quote": value_in_quote(got, r.get("evidence_quote", ""), r.get("status", "")),
             "evidence_quote": r.get("evidence_quote", ""),
             "notes": r.get("notes", ""), "error": error,
         })
+    add_citations(rows)
     return rows
 
 
@@ -204,7 +188,7 @@ def main() -> None:
     rescore = "--rescore" in args
     tickers = [a.upper() for a in args if not a.startswith("--")] or HELD_OUT
     if rescore:
-        saved = agent_rows_from_csv()
+        saved = agent_rows_from_csv(OUT)
         rows = [r for t in tickers for r in score_ticker(t, None, saved)]
     else:
         client = anthropic.Anthropic()
@@ -220,10 +204,7 @@ def main() -> None:
     print(f"\nHeld-out accuracy: {len(hits)}/{len(scored)}"
           + (f" = {len(hits) / len(scored):.0%}" if scored else "")
           + f"  ({len(rows) - len(scored)} unscored)")
-    covered, quoted, uncovered = citation_coverage(rows)
-    print(f"Citation coverage: {covered}/{quoted} = {covered / quoted:.0%} of found, directly quoted values")
-    for r in uncovered:
-        print(f"  not in quote: {r['ticker']}/{r['field']} = {r['got']}")
+    print_citations(rows)
     unscored = [r for r in rows if r["match"] == "unscored"]
     if unscored:
         print("\nUnscored (no usable XBRL):")

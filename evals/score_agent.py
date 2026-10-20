@@ -14,21 +14,34 @@ Two citation checks, reported alongside the score (they don't change it):
 
   quote_in_chunk   the agent's evidence_quote appears verbatim in the chunk it
                    cites
-  value_in_quote   the reported value itself appears in the quote, read in
-                   $ millions, thousands (5,408,962 = 5,408.962m) or billions
-                   (within $0.1bn rounding). Citation coverage = % of found,
-                   directly quoted values with value_in_quote PASS. Derived
-                   values (quote "n/a - derived", e.g. net_debt) are left out;
-                   a value summed or adjusted from quoted lines (e.g. 2,032 +
-                   57,017) counts as not covered, since the quote doesn't
-                   contain it.
+  citation         how a found value traces to the agent's quotes:
+                     direct      the value itself appears in its quote, read in
+                                 $ millions, thousands (5,408,962 = 5,408.962m)
+                                 or billions (within $0.1bn rounding)
+                     traceable   a sum / difference of 2-3 numbers in its own
+                                 quote (2,032 + 57,017 = 59,049), or, for a
+                                 derived value (quote "n/a - derived"), of the
+                                 ticker's other direct / traceable values
+                                 (59,049 - 45,078 = 13,971)
+                     untraced    neither
+                   citation_trace records the expression that matched. The
+                   search is kept this narrow on purpose: allowing any mix of
+                   every number in every quote would find a chance match for
+                   almost any value.
+                   Direct % = direct / found values; traceable % = (direct +
+                   traceable) / found values.
 
 Run:  .venv/bin/python -m evals.score_agent
+      .venv/bin/python -m evals.score_agent --rescore
+          re-scores the agent outputs already in evals/agent_results.csv
+          (no API calls)
 Writes evals/agent_results.csv.
 """
 
 import csv
+import itertools
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -42,10 +55,11 @@ KEY = HERE / "answer_key_liquidity.csv"
 OUT = HERE / "agent_results.csv"
 ROUNDING_M = 50  # $0.1bn rounding, per DEFINITIONS.md
 BILLIONS = re.compile(r"billion|\(billions\)", re.I)
-QUOTE_NUMBER = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?(?:\s*(billion|million))?", re.I)
+QUOTE_NUMBER = re.compile(r"(?<![\w.])\d(?:[\d,]*\d)?(?:\.\d+)?(?:\s*(billion|million))?", re.I)
+MAX_TERMS = 3  # numbers combined from one quote
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "agent_status", "unit", "as_of",
-           "source_chunk_id", "quote_in_chunk", "value_in_quote", "evidence_quote", "notes", "error"]
+           "source_chunk_id", "quote_in_chunk", "citation", "citation_trace", "evidence_quote", "notes", "error"]
 
 
 def load_key() -> dict[tuple[str, str], str]:
@@ -93,40 +107,127 @@ def quote_in_chunk(row: dict, chunks: dict[str, str]) -> str:
     return "PASS" if all(any(p in normalize(t) for t in texts) for p in pieces) else "FAIL"
 
 
-def value_in_quote(value, quote: str, status: str) -> str:
-    """PASS if `value` ($m) appears in `quote`; N/A for not_disclosed or derived."""
-    quote = quote or ""
-    if status != "found" or not quote or quote.startswith("n/a"):
-        return "N/A"
-    v = as_number(value)
-    if v is None:
-        return "N/A"
-    for m in QUOTE_NUMBER.finditer(quote):
+def quote_numbers(quote: str) -> list[tuple[float, str, bool]]:
+    """(amount, text, in_billions) for each number in a quote, years skipped."""
+    out = []
+    for m in QUOTE_NUMBER.finditer(quote or ""):
         if re.fullmatch(r"(19|20)\d\d", m.group(0)):
             continue  # a year ("2026, $ 165"), not an amount; filings write 2,026
         n = float(m.group(0).split()[0].replace(",", ""))
-        if (m.group(1) or "").lower() == "billion":
-            if abs(n * 1000 - abs(v)) <= ROUNDING_M:
-                return "PASS"
-        elif round(n) == round(abs(v)) or (n >= 1000 and round(n / 1000) == round(abs(v))
-                                           and abs(n / 1000 - abs(v)) < 0.001):
-            return "PASS"
-    return "FAIL"
+        billions = (m.group(1) or "").lower() == "billion"
+        out.append((n * 1000 if billions else n, m.group(0), billions))
+    return out
 
 
-def citation_coverage(rows: list[dict]) -> tuple[int, int, list[dict]]:
-    """(covered, quoted found values, the uncovered rows)."""
-    quoted = [r for r in rows if r["value_in_quote"] != "N/A"]
-    uncovered = [r for r in quoted if r["value_in_quote"] != "PASS"]
-    return len(quoted) - len(uncovered), len(quoted), uncovered
+def same(a: float, v: float, thousands: bool) -> bool:
+    """Equal in whole $m; from thousands, equal to the agent's decimals too."""
+    return abs(a - v) < 0.002 if thousands else round(a) == round(v)
 
 
-def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic) -> list[dict]:
-    try:
-        agent_rows = {r["field"]: r for r in run(ticker, client)}
-        error = ""
-    except Exception as e:  # one ticker failing shouldn't sink the run
-        agent_rows, error = {}, f"{type(e).__name__}: {e}"
+def value_in_quote(value, quote: str) -> bool:
+    v = as_number(value)
+    if v is None:
+        return False
+    for n, _, billions in quote_numbers(quote):
+        if billions and abs(n - abs(v)) <= ROUNDING_M:
+            return True
+        if not billions and (same(n, abs(v), False) or (n >= 1000 and same(n / 1000, abs(v), True))):
+            return True
+    return False
+
+
+def find_combination(v: float, terms: list[tuple[float, str]], max_terms: int,
+                     thousands: bool = False) -> str:
+    """An expression of 2..max_terms signed `terms` equal to `v`, or ""."""
+    for k in range(2, max_terms + 1):
+        for combo in itertools.combinations(terms, k):
+            for signs in itertools.product((1, -1), repeat=k):
+                if same(sum(s * x for s, (x, _) in zip(signs, combo)), v, thousands):
+                    ordered = sorted(zip(signs, combo), key=lambda p: -p[0])  # positive terms first
+                    expr = "".join(f"{' + ' if s > 0 else ' - '}{t}" for s, (_, t) in ordered)
+                    return expr[3:] if expr.startswith(" + ") else "-" + expr[3:]
+    return ""
+
+
+def add_citations(rows: list[dict]) -> None:
+    """Set citation / citation_trace on each row (rows of one or more tickers)."""
+    by_ticker: dict[str, list[dict]] = {}
+    for r in rows:
+        by_ticker.setdefault(r["ticker"], []).append(r)
+    for ticker_rows in by_ticker.values():
+        derived = []
+        for r in ticker_rows:
+            r["citation"], r["citation_trace"] = "N/A", ""
+            v = as_number(r["got"])
+            if r["agent_status"] != "found" or v is None:
+                continue
+            quote = r["evidence_quote"] or ""
+            if quote.startswith("n/a") or not quote:
+                derived.append(r)
+                continue
+            if value_in_quote(v, quote):
+                r["citation"] = "direct"
+                continue
+            nums = [(n, t) for n, t, billions in quote_numbers(quote) if not billions]
+            expr = find_combination(v, nums, MAX_TERMS)
+            if not expr:  # a filer reporting in thousands
+                expr = find_combination(v, [(n / 1000, t) for n, t in nums if n >= 1000], MAX_TERMS, True)
+            r["citation"], r["citation_trace"] = ("traceable", expr) if expr else ("untraced", "")
+        for r in derived:
+            v = as_number(r["got"])
+            inputs = [(as_number(o["got"]), f"{o['field']} {o['got']}") for o in ticker_rows
+                      if o is not r and o["citation"] in ("direct", "traceable")]
+            expr = find_combination(v, inputs, 2, thousands=not float(v).is_integer())
+            r["citation"], r["citation_trace"] = ("traceable", expr) if expr else ("untraced", "")
+
+
+def citation_coverage(rows: list[dict]) -> tuple[int, int, int, list[dict]]:
+    """(direct, direct + traceable, found values, the untraced rows)."""
+    found = [r for r in rows if r["citation"] != "N/A"]
+    direct = sum(r["citation"] == "direct" for r in found)
+    traceable = sum(r["citation"] in ("direct", "traceable") for r in found)
+    return direct, traceable, len(found), [r for r in found if r["citation"] == "untraced"]
+
+
+def print_citations(rows: list[dict]) -> None:
+    direct, traceable, found, untraced = citation_coverage(rows)
+    print(f"\nCitation coverage ({found} found values):")
+    print(f"  direct quote  {direct}/{found} = {direct / found:.0%}")
+    print(f"  traceable     {traceable}/{found} = {traceable / found:.0%}")
+    for r in rows:
+        if r["citation"] == "traceable":
+            print(f"    {r['ticker']}/{r['field']} = {r['got']}: {r['citation_trace']}")
+    for r in untraced:
+        print(f"  untraced: {r['ticker']}/{r['field']} = {r['got']}")
+
+
+def agent_rows_from_csv(path: Path) -> dict[str, dict[str, dict]]:
+    """Agent outputs saved by an earlier run: ticker -> field -> agent row."""
+    out: dict[str, dict[str, dict]] = {}
+    with path.open() as f:
+        for r in csv.DictReader(f):
+            value = r["got"]
+            if value not in ("", "not_disclosed"):
+                n = float(value)
+                value = int(n) if n.is_integer() else n
+            out.setdefault(r["ticker"], {})[r["field"]] = {
+                "value": value, "status": r["agent_status"], "unit": r.get("unit", ""), "as_of": r["as_of"],
+                "source_chunk_id": r["source_chunk_id"], "evidence_quote": r["evidence_quote"],
+                "notes": r["notes"], "error": r["error"]}
+    return out
+
+
+def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic | None,
+                 saved: dict | None = None) -> list[dict]:
+    if saved is not None:
+        agent_rows = saved.get(ticker, {})
+        error = next((r["error"] for r in agent_rows.values() if r.get("error")), "")
+    else:
+        try:
+            agent_rows = {r["field"]: r for r in run(ticker, client)}
+            error = ""
+        except Exception as e:  # one ticker failing shouldn't sink the run
+            agent_rows, error = {}, f"{type(e).__name__}: {e}"
     chunks = {c["id"]: c["text"] for c in load_chunks(ticker)}
     out = []
     for field in FIELDS:
@@ -139,9 +240,9 @@ def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic) -> list[di
             "agent_status": r.get("status", ""), "unit": r.get("unit", ""), "as_of": r.get("as_of", ""),
             "source_chunk_id": r.get("source_chunk_id", ""),
             "quote_in_chunk": quote_in_chunk(r, chunks) if r else "N/A",
-            "value_in_quote": value_in_quote(got, r.get("evidence_quote", ""), r.get("status", "")),
             "evidence_quote": r.get("evidence_quote", ""), "notes": r.get("notes", ""), "error": error,
         })
+    add_citations(out)
     return out
 
 
@@ -153,12 +254,7 @@ def print_report(rows: list[dict]) -> None:
     for field in FIELDS:
         fr = [r for r in rows if r["field"] == field]
         print(f"  {field:<22} {sum(r['match'] != 'miss' for r in fr)}/{len(fr)}")
-    covered, quoted, uncovered = citation_coverage(rows)
-    print(f"\nCitation coverage: {covered}/{quoted} = {covered / quoted:.0%} of found, directly quoted values "
-          f"have the value in the quote ({sum(r['value_in_quote'] == 'N/A' and r['agent_status'] == 'found' for r in rows)}"
-          f" derived values excluded)")
-    for r in uncovered:
-        print(f"  not in quote: {r['ticker']}/{r['field']} = {r['got']}  ({r['notes'][:110]})")
+    print_citations(rows)
     bad_quotes = [r for r in rows if r["quote_in_chunk"].startswith("FAIL")]
     if bad_quotes:
         print(f"\nQuotes not found verbatim in the cited chunk: "
@@ -179,9 +275,13 @@ def main() -> None:
     load_dotenv()
     key = load_key()
     tickers = list(dict.fromkeys(t for t, _ in key))
-    client = anthropic.Anthropic()
-    with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
-        results = list(pool.map(lambda t: score_ticker(t, key, client), tickers))
+    if "--rescore" in sys.argv[1:]:
+        saved = agent_rows_from_csv(OUT)
+        results = [score_ticker(t, key, None, saved) for t in tickers]
+    else:
+        client = anthropic.Anthropic()
+        with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
+            results = list(pool.map(lambda t: score_ticker(t, key, client), tickers))
     rows = [r for ticker_rows in results for r in ticker_rows]
     with OUT.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)

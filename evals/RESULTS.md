@@ -12,8 +12,8 @@ June 30, 2026). Run date: 2026-10-19.
 | Held-out, corrected scorer | **12/16 = 75%**, 0 unscored | `evals/score_heldout.py --rescore`, same agent outputs; fixes in `SCORER_FIXES.md` |
 | Consistency | **20/20 fields identical across 3 runs** (value and as_of); each run 20/20 vs the key | `evals/consistency.py` |
 | Leak check | **PASS** (static, runtime, rules) | `evals/leak_check.py` |
-| Citation coverage, tuned | **8/12 = 67%** (5 derived values excluded) | `value_in_quote` in `score_agent.py` |
-| Citation coverage, held-out | **5/11 = 45%** (5 derived values excluded) | same rule, on the held-out outputs |
+| Citations, tuned (17 found values) | **direct 8/17 = 47%, traceable 17/17 = 100%** | `citation` in `score_agent.py --rescore` |
+| Citations, held-out (15 found values) | **direct 5/15 = 33%, traceable 15/15 = 100%** | same rule, `score_heldout.py --rescore` |
 
 ## Held-out
 
@@ -35,19 +35,37 @@ because of held-out results.
   `data/cache/`, each run opened only that ticker's 10-Q folder.
 - **Rules:** DEFINITIONS.md contains none of the answer key's values.
 
-## Citation coverage
+## Citations
 
-This is the share of found values whose quote contains the value itself
-(read in $m, thousands or billions). Every uncovered value is a sum or
-adjustment of lines the agent did quote, with the math in `notes`. In those
-cases all the inputs are cited, but not the result:
+Each found value is classified (`citation` / `citation_trace` columns in the
+results CSVs):
 
-- Tuned: AXP cash (45,243 − 165 restricted), AXP / V / MA total_debt (short- +
-  long-term lines). In an earlier run V and MA quoted the "Total ... debt" row
-  instead, so the values were stable across runs but which line the agent
-  quotes was not.
-- Held-out: PYPL / ALLY / FIS / GPN total_debt and FIS / GPN
-  debt_due_within_12m (sums of balance-sheet lines).
+- **Direct:** the value itself appears in its quote, read in $m, thousands or
+  billions.
+- **Traceable:** the value equals a sum or difference of 2–3 numbers in its own
+  quote, or, for a derived value (net_debt, quoted as "n/a - derived"), of the
+  ticker's other direct or traceable values.
+
+Direct % = direct / found values. Traceable % = (direct + traceable) / found.
+
+The search is kept narrow on purpose. Any mix of every number in every quote
+would find a chance match for almost any value. With this rule, 0 of 2,000
+random values traced against a typical quote. Every traced expression agrees
+with the math the agent wrote in `notes`:
+
+- **Tuned, not direct (9):** AXP cash 45,243 − 165 restricted; AXP / V / MA
+  total_debt as short-term + long-term lines; all five net_debt values as
+  total_debt − cash.
+- **Held-out, not direct (10):** PYPL / ALLY / FIS / GPN total_debt and FIS /
+  GPN debt_due_within_12m as sums of balance-sheet lines (GPN in thousands); all
+  four net_debt values as total_debt − cash.
+
+Traceable doesn't mean correct. GPN's total_debt traces exactly (settlement
+lines + current portion + long-term debt) and is still a miss, because the
+open question is which lines to count, not the arithmetic. Which lines the agent
+quotes also varies between runs. In one run V and MA quoted the "Total ...
+debt" row (direct), and in another the component lines (traceable), with the
+same values.
 
 ## Misses
 
