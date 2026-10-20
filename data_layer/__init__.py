@@ -5,6 +5,6 @@
 """
 
 from data_layer.extract import SECTIONS
-from data_layer.store import list_available, load_sections
+from data_layer.store import list_available, load_sections, period_of_report
 
-__all__ = ["SECTIONS", "list_available", "load_sections"]
+__all__ = ["SECTIONS", "list_available", "load_sections", "period_of_report"]

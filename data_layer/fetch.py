@@ -5,6 +5,7 @@ Run:  .venv/bin/python -m data_layer.fetch            (all tickers)
       .venv/bin/python -m data_layer.fetch --refresh  (check SEC for newer filings)
 """
 
+import json
 import os
 import sys
 import warnings
@@ -70,6 +71,7 @@ def fetch_filing(ticker: str, form: str, refresh: bool = False) -> str:
         "ticker": ticker,
         "form": form,
         "filing_date": filing_date,
+        "period_of_report": str(filing.period_of_report),
         "accession_no": filing.accession_no,
         "url": filing.filing_url,
         "sections": {},
@@ -113,12 +115,33 @@ def section_records(ticker: str, form: str, filing_date: str, name: str, sec: Se
     return records, entry
 
 
+def backfill_period(folder, manifest: dict) -> bool:
+    """Add period_of_report to a manifest written before it was recorded.
+    Uses filing_meta.json (written by the evals) when present."""
+    if manifest.get("period_of_report"):
+        return False
+    meta = folder / "filing_meta.json"
+    if meta.exists():
+        period = json.loads(meta.read_text())["period_of_report"]
+    else:
+        from edgar import get_by_accession_number  # noqa: PLC0415
+
+        _ensure_identity()
+        period = str(get_by_accession_number(manifest["accession_no"]).period_of_report)
+    manifest["period_of_report"] = period
+    write_filing(folder, manifest, {})
+    return True
+
+
 def backfill(ticker: str) -> list[str]:
-    """Add BACKFILLABLE sections missing from cached filings. Existing section
-    files are not touched, so their chunk ids stay the same."""
+    """Add BACKFILLABLE sections and period_of_report missing from cached
+    filings. Existing section files are not touched, so their chunk ids stay
+    the same."""
     done = []
     for folder in filing_dirs(ticker):
         manifest = read_manifest(folder)
+        if backfill_period(folder, manifest):
+            done.append(f"{folder.name}: +period_of_report")
         missing = [s for s in BACKFILLABLE if s not in manifest["sections"]]
         if not missing:
             continue
