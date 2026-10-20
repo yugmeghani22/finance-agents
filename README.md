@@ -12,10 +12,16 @@ which the agent and the answer key both follow.
 ## How it works
 
 ```
-SEC EDGAR ──► data_layer ──► data/cache/{ticker}/{form}_{date}/   (sections, chunked)
-                                   │
-                                   ▼
-             DEFINITIONS.md ──► agents/liquidity.py ──► JSON per field + citation
+"What's JPMorgan's liquidity?"
+        │  ask.py: router picks a skill (skills/*/SKILL.md)
+        ▼
+  agents/agentic.py ──tool calls──► resolve_ticker · fetch_filings · list_sections ·
+        │                           read_section · search_filing · get_xbrl_facts · calculate
+        ▼                                  │
+  4 fields + quote + source + confidence   ▼
+  (log: runs/{ticker}_{ts}.json)     SEC EDGAR ──► data_layer ──► data/cache/{ticker}/{form}_{date}/
+
+             DEFINITIONS.md ──► agents/liquidity.py (v1, single call) ──► JSON per field + citation
                                    │
                                    ▼
         evals/answer_key_liquidity.csv ◄── verify_key.py + xbrl_check.py ◄── review app
@@ -35,7 +41,32 @@ assembled from tagged fallback excerpts, never silently filled. Sections are
 chunked and cached with stable chunk ids (`AXP_10Q_2026-07-24_balance_sheet_01`)
 that citations point to.
 
-**Agent** ([`agents/liquidity.py`](agents/liquidity.py)). Given a ticker, it
+**Tool-using agent** ([`agents/agentic.py`](agents/agentic.py),
+[`agents/tools.py`](agents/tools.py)). `ask.py` takes a question in plain
+English. A router call picks the skill and names the company. The agent loop
+then works with seven tools:
+- `resolve_ticker`: name or ticker to CIK; fails for non-10-K/10-Q filers
+- `fetch_filings`: download and cache if missing
+- `list_sections` / `read_section`: the data layer's extracted sections
+- `search_filing`: keyword search across the whole filing when a section is
+  missing
+- `get_xbrl_facts`: the filing's tagged values
+- `calculate`: exact arithmetic
+
+It has at most 15 tool calls and ends with a `submit_answer` call. Confidence
+isn't taken from the model. The agent names the XBRL tags its value should
+equal, and the pipeline recomputes them from the filing's real facts: high if
+they agree, medium if there's no XBRL fact, low if they conflict.
+
+**Skills** ([`skills/`](skills)). Each skill is a `SKILL.md` with front matter
+(name, description, fields, unit) and instructions. The router reads the
+descriptions and the agent loads the chosen skill's body as its rules, so a
+new skill (FX next) is a new folder with no code change.
+[`skills/liquidity/SKILL.md`](skills/liquidity/SKILL.md) holds the field
+rules copied verbatim from DEFINITIONS.md, plus which tools to use when. The
+leak check fails if the two drift apart.
+
+**v1 agent** ([`agents/liquidity.py`](agents/liquidity.py)). Given a ticker, it
 loads only that ticker's balance sheet, liquidity and debt chunks and calls
 Claude (`claude-opus-5-5`) with DEFINITIONS.md as the rules and a JSON schema
 for the output. Each field comes back with `value` ($ millions), `unit`,
@@ -62,18 +93,22 @@ ground truth for tickers that have no hand-built key.
 
 ## Results
 
-From [`evals/RESULTS.md`](evals/RESULTS.md) (run 2026-10-19, filings for the
-period ending June 30, 2026):
+From [`evals/RESULTS.md`](evals/RESULTS.md) (filings for the period ending
+June 30, 2026). The v1 single-call agent was run on 2026-10-19 and the
+tool-using agent on 2026-10-20:
 
 | Metric | Result |
 | --- | --- |
-| Tuned set (AXP, COF, SYF, V, MA) | **20/20 = 100%**, all exact |
-| Held-out (PYPL, ALLY, FIS, GPN), raw scorer | **9/15 = 60%**, 1 unscored |
-| Held-out, corrected scorer | **12/16 = 75%**, 0 unscored |
+| v1: tuned set (AXP, COF, SYF, V, MA) | **20/20 = 100%**, all exact |
+| v1: held-out (PYPL, ALLY, FIS, GPN), raw scorer | **9/15 = 60%**, 1 unscored |
+| v1: held-out, corrected scorer | **12/16 = 75%**, 0 unscored |
 | Consistency | **20/20 fields identical across 3 runs** (value and as_of) |
 | Leak check | **PASS** (static, runtime, rules) |
 | Citations, tuned (17 found values) | **direct 8/17 = 47%, traceable 17/17 = 100%** |
 | Citations, held-out (15 found values) | **direct 5/15 = 33%, traceable 15/15 = 100%** |
+| Tool-using agent: tuned set | **20/20 = 100%** |
+| Tool-using agent: held-out | **15/16 = 94%** |
+| Tool-using agent: new tickers (JPM, AAPL, KO, F, DAL) | **7/13 = 54%**, 7 unscored. 3 misses are a scorer tag gap (KO), 3 a finance-lease ambiguity (DAL); see [RESULTS.md](evals/RESULTS.md#tool-using-agent-featureagentic-2026-10-20) |
 
 - **Held-out scores.** "Corrected" fixes three scorer errors (wrong XBRL tags,
   rounding precision), each with evidence in
@@ -86,7 +121,7 @@ period ending June 30, 2026):
   "Traceable" means it equals a sum or difference of quoted numbers (or, for
   net_debt, of the other fields).
 
-## How to run
+## Quick start
 
 Requires Python 3.10+, an [Anthropic API key](https://console.anthropic.com/)
 and an SEC user agent (`"Your Name your.email@example.com"`, as
@@ -104,11 +139,33 @@ python -m venv .venv
 cp .env.example .env
 ```
 
-Fill in `ANTHROPIC_API_KEY` and `SEC_USER_AGENT` in `.env`, then:
+Fill in `ANTHROPIC_API_KEY` and `SEC_USER_AGENT` in `.env`, then check that
+the Claude API and EDGAR are reachable:
 
 ```bash
 .venv/bin/python test_setup.py
 ```
+
+Ask about any US company that files 10-K / 10-Q reports. Filings are fetched
+and cached on first use:
+
+```bash
+.venv/bin/python ask.py "What's JPMorgan's liquidity?"
+```
+
+The agent picks a skill (here `liquidity`), resolves the company to its
+ticker and CIK, and works through the tools (at most 15 calls). It then prints
+each field with its value, as_of date, quote, source chunk and a confidence:
+- **high:** the text value matches the filing's XBRL
+- **medium:** text only, or not_disclosed
+- **low:** text and XBRL conflict; the notes explain why
+
+Add `--json` for machine-readable output. Every tool call, with its input,
+output and the model's reasoning summary, is logged to
+`runs/{ticker}_{timestamp}.json` (not committed) for replaying a run.
+
+To run the v1 single-call agent instead (reads the cached sections directly,
+no tools):
 
 ```bash
 .venv/bin/python check_data.py
@@ -118,19 +175,15 @@ Fill in `ANTHROPIC_API_KEY` and `SEC_USER_AGENT` in `.env`, then:
 .venv/bin/python -m agents.liquidity AXP
 ```
 
-`test_setup.py` checks that the Claude API and EDGAR are reachable.
-`check_data.py` downloads and caches the filings into `data/cache/` (not
-committed). The last command runs the agent on one ticker.
-
 Evals (each writes a CSV in `evals/`):
 
 | Command | What it does |
 | --- | --- |
-| `.venv/bin/python -m evals.score_agent` | Runs the agent on the 5 tuned tickers and scores it against the answer key (`--rescore` re-scores saved outputs without API calls) |
+| `.venv/bin/python -m evals.score_agent` | Runs the agent on the 5 tuned tickers and scores it against the answer key (`--agentic` for the tool-using agent; `--rescore` re-scores saved outputs without API calls) |
 | `.venv/bin/python -m data_layer.fetch PYPL ALLY FIS GPN` | Caches the held-out filings |
-| `.venv/bin/python -m evals.score_heldout` | Runs the agent on the held-out tickers and scores it against XBRL (`--rescore` likewise) |
+| `.venv/bin/python -m evals.score_heldout` | Runs the agent on the held-out tickers (or any tickers given) and scores it against XBRL (`--agentic`, `--rescore`, `--out=FILE.csv`) |
 | `.venv/bin/python -m evals.consistency 3` | Runs the agent 3 times per ticker and reports any value that changes |
-| `.venv/bin/python -m evals.leak_check` | Checks the agent can't read the answer key |
+| `.venv/bin/python -m evals.leak_check` | Checks the agent can't read the answer key (`--agentic`: nothing under `evals/` at all, and SKILL.md rules match DEFINITIONS.md) |
 | `.venv/bin/python -m evals.verify_key` | Runs the deterministic checks and XBRL cross-check on the answer key |
 | `.venv/bin/streamlit run app/review.py` | Opens the review page for the answer key |
 

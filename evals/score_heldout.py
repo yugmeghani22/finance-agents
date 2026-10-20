@@ -30,9 +30,11 @@ value is a miss.
 
 Run:  .venv/bin/python -m evals.score_heldout [TICKER ...]   (default: PYPL ALLY FIS GPN)
       .venv/bin/python -m evals.score_heldout --rescore
-          re-scores the agent outputs already in evals/heldout_results.csv
+          re-scores the agent outputs already in the results file
           (no API calls), so a scorer change is measured on the same answers
-Writes evals/heldout_results.csv.
+Options: --agentic scores the tool-using agent (agents/agentic.py) and adds
+its confidence; --out=NAME.csv writes evals/NAME.csv instead of
+evals/heldout_results.csv (evals/heldout_results_agentic.csv with --agentic).
 """
 
 import csv
@@ -44,9 +46,10 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 
-from agents.liquidity import FIELDS, run
+from agents.liquidity import FIELDS
 from data_layer.store import filing_dirs, read_manifest
-from evals.score_agent import add_citations, agent_rows_from_csv, compare, print_citations
+from evals.score_agent import (AGENT_EXTRA, add_citations, agent_rows_from_csv, agent_runner, compare,
+                               print_citations, print_confidence)
 from evals.xbrl_check import ALL_TAGS, _values, load_facts, total_debt
 
 HERE = Path(__file__).resolve().parent
@@ -61,7 +64,8 @@ TAGS = ALL_TAGS | set(CURRENT_TAGS + NONCURRENT_TAGS)
 FACTS_CACHE = "xbrl_facts_heldout.json"
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "xbrl_tag", "xbrl_detail", "period",
-           "agent_status", "as_of", "source_chunk_id", "citation", "citation_trace", "evidence_quote", "notes", "error"]
+           "agent_status", "as_of", "source_chunk_id", "citation", "citation_trace", "confidence", "confidence_reason", "xbrl_value",
+           "tool_calls", "evidence_quote", "notes", "error", "log_path"]
 
 
 def period_of_report(folder: Path, accession_no: str) -> str:
@@ -144,22 +148,30 @@ def xbrl_truth(facts: list[dict], period: str) -> dict[str, tuple[float | None, 
     return out
 
 
-def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | None = None) -> list[dict]:
+def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | None = None,
+                 agentic: bool = False) -> list[dict]:
+    error = ""
+    if saved is not None:
+        agent_rows = saved.get(ticker, {})
+        error = next((r["error"] for r in agent_rows.values() if r.get("error")), "")
+    else:
+        # The agent runs before the cache is read: the agentic agent fetches a
+        # new ticker's filings itself.
+        try:
+            agent_rows = {r["field"]: r for r in agent_runner(agentic)(ticker, client)}
+        except Exception as e:  # one ticker failing shouldn't sink the run
+            agent_rows, error = {}, f"{type(e).__name__}: {e}"
+    if not filing_dirs(ticker, "10-Q"):
+        from data_layer.fetch import backfill, fetch_filing  # noqa: PLC0415
+        fetch_filing(ticker, "10-Q")
+        backfill(ticker)
     folder = filing_dirs(ticker, "10-Q")[0]
     manifest = read_manifest(folder)
     period = period_of_report(folder, manifest["accession_no"])
     truth = xbrl_truth(load_facts(folder, manifest["accession_no"], TAGS, FACTS_CACHE), period)
-    if saved is not None:
-        agent_rows = saved.get(ticker, {})
-        error = next((r["error"] for r in agent_rows.values() if r.get("error")), "")
-        for r in agent_rows.values():
-            if r["status"] == "not_disclosed":
-                r["as_of"] = period  # same rule as agents/liquidity.run()
-    else:
-        try:
-            agent_rows, error = {r["field"]: r for r in run(ticker, client)}, ""
-        except Exception as e:
-            agent_rows, error = {}, f"{type(e).__name__}: {e}"
+    for r in agent_rows.values():
+        if r["status"] == "not_disclosed":
+            r["as_of"] = period  # same rule as the agents' run()
     rows = []
     for field in FIELDS:
         value, tag, detail = truth[field]
@@ -177,6 +189,7 @@ def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | 
             "source_chunk_id": r.get("source_chunk_id", ""),
             "evidence_quote": r.get("evidence_quote", ""),
             "notes": r.get("notes", ""), "error": error,
+            **{k: r.get(k, "") for k in AGENT_EXTRA},
         })
     add_citations(rows)
     return rows
@@ -185,16 +198,18 @@ def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | 
 def main() -> None:
     load_dotenv()
     args = sys.argv[1:]
-    rescore = "--rescore" in args
+    rescore, agentic = "--rescore" in args, "--agentic" in args
+    out_name = next((a.split("=", 1)[1] for a in args if a.startswith("--out=")), None)
+    out = HERE / out_name if out_name else (HERE / "heldout_results_agentic.csv" if agentic else OUT)
     tickers = [a.upper() for a in args if not a.startswith("--")] or HELD_OUT
     if rescore:
-        saved = agent_rows_from_csv(OUT)
+        saved = agent_rows_from_csv(out)
         rows = [r for t in tickers for r in score_ticker(t, None, saved)]
     else:
         client = anthropic.Anthropic()
         with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
-            rows = [r for rs in pool.map(lambda t: score_ticker(t, client), tickers) for r in rs]
-    with OUT.open("w", newline="") as f:
+            rows = [r for rs in pool.map(lambda t: score_ticker(t, client, agentic=agentic), tickers) for r in rs]
+    with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
         w.writerows(rows)
@@ -205,6 +220,7 @@ def main() -> None:
           + (f" = {len(hits) / len(scored):.0%}" if scored else "")
           + f"  ({len(rows) - len(scored)} unscored)")
     print_citations(rows)
+    print_confidence(rows)
     unscored = [r for r in rows if r["match"] == "unscored"]
     if unscored:
         print("\nUnscored (no usable XBRL):")
@@ -218,7 +234,7 @@ def main() -> None:
         for r in misses:
             quote = (r["error"] or r["evidence_quote"]).replace("|", "\\|")
             print(f"| {r['ticker']} | {r['field']} | {r['expected']} | {r['got']} | {r['xbrl_detail']} | {quote} |")
-    print(f"\nWrote {OUT.relative_to(HERE.parent)}")
+    print(f"\nWrote {out.relative_to(HERE.parent)}")
 
 
 if __name__ == "__main__":
