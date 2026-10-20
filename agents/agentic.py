@@ -23,6 +23,7 @@ output and duration, and the final answer.
 Nothing here reads evals/: the rules come from the skill file.
 """
 
+import concurrent.futures
 import datetime
 import json
 import re
@@ -39,6 +40,9 @@ from data_layer.xbrl import filing_facts
 
 MODEL = "claude-opus-5-5"
 MAX_TOOL_CALLS = 15
+TOOL_TIMEOUT_S = 120  # a hung EDGAR request comes back to the model as a tool error
+# A stream silent this long is treated as stalled and retried by the SDK.
+API_TIMEOUT = anthropic.Timeout(900.0, read=180.0, connect=10.0)
 MAX_SUBMIT_ATTEMPTS = 3
 RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 LOG_OUTPUT_CHARS = 20_000
@@ -176,6 +180,18 @@ def _block_log(block) -> dict | None:
     return None
 
 
+_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix="tool")
+
+
+def _call_with_timeout(name: str, args: dict) -> dict:
+    future = _pool.submit(tools.call, name, args)
+    try:
+        return future.result(timeout=TOOL_TIMEOUT_S)
+    except concurrent.futures.TimeoutError as e:
+        raise tools.ToolError(f"{name} timed out after {TOOL_TIMEOUT_S}s (network); "
+                              "retry once or continue without it") from e
+
+
 def _validate(answers: list[dict], skill: Skill) -> str:
     fields = [a["field"] for a in answers]
     missing = [f for f in skill.fields if f not in fields]
@@ -188,12 +204,21 @@ def _validate(answers: list[dict], skill: Skill) -> str:
     return "; ".join(problems)
 
 
+DISABLED_NOTE = """
+
+Disabled for this run: {tools}. Skip every step that needs them. For
+get_xbrl_facts that means no XBRL cross-check: leave xbrl_expression empty and
+take every value from the filing text."""
+
+
 def answer(question: str, skill_name: str | None = None, client: anthropic.Anthropic | None = None,
-           log: bool = True) -> dict:
-    client = client or anthropic.Anthropic()
+           log: bool = True, disabled_tools: tuple[str, ...] = ()) -> dict:
+    """`disabled_tools` removes tools for an ablation run (e.g. ("get_xbrl_facts",))."""
+    client = (client or anthropic.Anthropic()).with_options(timeout=API_TIMEOUT)
     started = datetime.datetime.now()
     record: dict = {"question": question, "started_at": started.isoformat(timespec="seconds"),
-                    "model": MODEL, "max_tool_calls": MAX_TOOL_CALLS, "steps": []}
+                    "model": MODEL, "max_tool_calls": MAX_TOOL_CALLS,
+                    "disabled_tools": list(disabled_tools), "steps": []}
     if skill_name is None:
         decision = route(question, client)
         record["route"] = decision
@@ -204,8 +229,13 @@ def answer(question: str, skill_name: str | None = None, client: anthropic.Anthr
     skill = load_skill(skill_name)
     record["skill"] = skill.name
 
+    unknown = set(disabled_tools) - set(tools.IMPLEMENTATIONS)
+    if unknown:
+        raise ValueError(f"unknown tools to disable: {sorted(unknown)}")
     system = AGENT_SYSTEM.format(name=skill.name, body=skill.body)
-    all_tools = tools.TOOLS + [submit_tool(skill)]
+    if disabled_tools:
+        system += DISABLED_NOTE.format(tools=", ".join(disabled_tools))
+    all_tools = [t for t in tools.TOOLS if t["name"] not in disabled_tools] + [submit_tool(skill)]
     messages = [{"role": "user", "content": question}]
     calls, submits, resolved = 0, 0, None
     usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0}
@@ -263,10 +293,14 @@ def answer(question: str, skill_name: str | None = None, client: anthropic.Anthr
                 results.append({"type": "tool_result", "tool_use_id": use.id, "is_error": True,
                                 "content": f"Tool budget of {MAX_TOOL_CALLS} calls is used up. "
                                            "Call submit_answer now with what you have."})
+            elif use.name in disabled_tools:
+                entry["error"] = "tool disabled"
+                results.append({"type": "tool_result", "tool_use_id": use.id, "is_error": True,
+                                "content": f"{use.name} is disabled for this run."})
             else:
                 calls += 1
                 try:
-                    output = tools.call(use.name, use.input)
+                    output = _call_with_timeout(use.name, use.input)
                     if use.name == "resolve_ticker" and resolved is None:
                         resolved = output
                     text = json.dumps(output, ensure_ascii=False)
@@ -323,10 +357,11 @@ def _finish(record: dict, resolved: dict | None, log: bool) -> dict:
 
 # ------------------------------------------------------------------ eval adapter
 
-def run(ticker: str, client: anthropic.Anthropic | None = None) -> list[dict]:
+def run(ticker: str, client: anthropic.Anthropic | None = None,
+        disabled_tools: tuple[str, ...] = ()) -> list[dict]:
     """Liquidity rows for a ticker in the shape the eval scorers expect."""
     record = answer(f"What is the liquidity position of the company with ticker {ticker.upper()}?",
-                    skill_name="liquidity", client=client)
+                    skill_name="liquidity", client=client, disabled_tools=disabled_tools)
     if "answers" not in record:
         raise RuntimeError(f"{ticker}: {record.get('error', 'no answer')} (log: {record.get('log_path')})")
     rows = []

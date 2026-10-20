@@ -78,6 +78,37 @@ number.
 
 **Effect:** GPN cash miss → exact.
 
+## Fix 4: KO's short-term borrowings tag (missing tag), 2026-10-20
+
+**Ticker:** KO (total_debt, net_debt, debt_due_within_12m), one of the five
+new tickers tested with the tool-using agent.
+
+**Evidence:** KO's 10-Q balance sheet (June 30, 2026, $ millions) lists under
+**Current Liabilities**: "Loans and notes payable 48", "Current maturities of
+long-term debt 6,494", then "Long-term debt 37,001" below Total Current
+Liabilities. XBRL tags the first line, dimensionless, as `NotesAndLoansPayable`
+= 48. The scorer only counted `ShortTermBorrowings` / `CommercialPaper` as
+short-term debt, so its expected values left out a balance-sheet borrowing
+line that DEFINITIONS.md counts. Those values were total_debt 43,495 instead of
+43,543, net_debt 30,588 instead of 30,636, and debt_due_within_12m 6,494
+instead of 6,542. DEFINITIONS.md says to add short-term borrowings when they
+are a separate balance-sheet line that total_debt counts.
+
+**Fix:** if neither `ShortTermBorrowings` nor `CommercialPaper` is tagged,
+count `NotesAndLoansPayable` as the short-term part of current debt. It's a
+fallback because the US-GAAP taxonomy lets this tag include non-current
+notes, and a filer that also tags `ShortTermBorrowings` would be
+double-counted. The held-out XBRL cache (`xbrl_facts_heldout.json`) was
+rebuilt to include the tag.
+
+**Effect:** recomputed for all 14 tickers (tuned, held-out, new). Only KO's
+three expected values changed (+48 each). No other ticker tags
+`NotesAndLoansPayable`. DAL's `ShortTermNonBankLoansAndNotesPayable` (1,100)
+was deliberately left out: that's a different tag, and DAL is an open
+definition question (KNOWN_ISSUES.md, V2 backlog). Tool-using agent on the new
+tickers, same outputs re-scored: 7/13 → 10/13. Held-out scores are unchanged
+(v1 12/16, tool-using 15/16).
+
 ## Not fixed (scorer is not objectively wrong)
 
 | Ticker | Field | Agent | XBRL expected | Why left as a miss |

@@ -33,13 +33,15 @@ Two citation checks, reported alongside the score (they don't change it):
 
 With --agentic the tool-using agent (agents/agentic.py) is scored instead of
 the v1 single-call agent, and each row also gets its confidence (high /
-medium / low) and the XBRL value it was checked against.
+medium / low) and the XBRL value it was checked against. Add --no-xbrl to
+run it with get_xbrl_facts disabled (text only, the XBRL ablation).
 
 Run:  .venv/bin/python -m evals.score_agent [--agentic]
       .venv/bin/python -m evals.score_agent [--agentic] --rescore
           re-scores the agent outputs already in the results file
           (no API calls)
-Writes evals/agent_results.csv (--agentic: evals/agent_results_agentic.csv).
+Writes evals/agent_results.csv (--agentic: evals/agent_results_agentic.csv;
+--agentic --no-xbrl: evals/agent_results_agentic_textonly.csv).
 """
 
 import csv
@@ -72,9 +74,16 @@ COLUMNS = ["ticker", "field", "expected", "got", "match", "agent_status", "unit"
 AGENT_EXTRA = ["confidence", "confidence_reason", "xbrl_value", "tool_calls", "log_path"]
 
 
-def agent_runner(agentic: bool):
+TEXT_ONLY = ("get_xbrl_facts",)
+
+
+def agent_runner(agentic: bool, text_only: bool = False):
+    """The agent's run(ticker, client). text_only: the agentic agent without
+    get_xbrl_facts (the XBRL ablation)."""
     if agentic:
         from agents.agentic import run  # noqa: PLC0415
+        if text_only:
+            return lambda ticker, client=None: run(ticker, client, disabled_tools=TEXT_ONLY)
         return run
     return run_v1
 
@@ -252,13 +261,13 @@ def agent_rows_from_csv(path: Path) -> dict[str, dict[str, dict]]:
 
 
 def score_ticker(ticker: str, key: dict, client: anthropic.Anthropic | None,
-                 saved: dict | None = None, agentic: bool = False) -> list[dict]:
+                 saved: dict | None = None, agentic: bool = False, text_only: bool = False) -> list[dict]:
     if saved is not None:
         agent_rows = saved.get(ticker, {})
         error = next((r["error"] for r in agent_rows.values() if r.get("error")), "")
     else:
         try:
-            agent_rows = {r["field"]: r for r in agent_runner(agentic)(ticker, client)}
+            agent_rows = {r["field"]: r for r in agent_runner(agentic, text_only)(ticker, client)}
             error = ""
         except Exception as e:  # one ticker failing shouldn't sink the run
             agent_rows, error = {}, f"{type(e).__name__}: {e}"
@@ -327,14 +336,16 @@ def main() -> None:
     key = load_key()
     tickers = list(dict.fromkeys(t for t, _ in key))
     agentic = "--agentic" in sys.argv[1:]
-    out = OUT_AGENTIC if agentic else OUT
+    text_only = agentic and "--no-xbrl" in sys.argv[1:]
+    out = (HERE / "agent_results_agentic_textonly.csv") if text_only else (OUT_AGENTIC if agentic else OUT)
     if "--rescore" in sys.argv[1:]:
         saved = agent_rows_from_csv(out)
         results = [score_ticker(t, key, None, saved, agentic) for t in tickers]
     else:
         client = anthropic.Anthropic()
         with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
-            results = list(pool.map(lambda t: score_ticker(t, key, client, agentic=agentic), tickers))
+            results = list(pool.map(lambda t: score_ticker(t, key, client, agentic=agentic,
+                                                           text_only=text_only), tickers))
     rows = [r for ticker_rows in results for r in ticker_rows]
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)

@@ -12,7 +12,8 @@ period of report (dimensionless facts only), built to match DEFINITIONS.md:
                           current      DebtCurrent as is; else LongTermDebtCurrent
                                        or LongTermDebtAndCapitalLeaseObligationsCurrent,
                                        plus separately tagged ShortTermBorrowings /
-                                       CommercialPaper
+                                       CommercialPaper (or, if neither is tagged,
+                                       NotesAndLoansPayable)
                           non-current  LongTermDebtNoncurrent or
                                        LongTermDebtAndCapitalLeaseObligations
                         A filer with no current / non-current split falls back to
@@ -33,8 +34,10 @@ Run:  .venv/bin/python -m evals.score_heldout [TICKER ...]   (default: PYPL ALLY
           re-scores the agent outputs already in the results file
           (no API calls), so a scorer change is measured on the same answers
 Options: --agentic scores the tool-using agent (agents/agentic.py) and adds
-its confidence; --out=NAME.csv writes evals/NAME.csv instead of
-evals/heldout_results.csv (evals/heldout_results_agentic.csv with --agentic).
+its confidence; --no-xbrl (with --agentic) disables its get_xbrl_facts tool,
+the XBRL ablation; --out=NAME.csv writes evals/NAME.csv instead of
+evals/heldout_results.csv (heldout_results_agentic.csv with --agentic,
+heldout_results_agentic_textonly.csv with --no-xbrl).
 """
 
 import csv
@@ -60,7 +63,11 @@ CASH_WITH_RESTRICTED = "CashCashEquivalentsRestrictedCashAndRestrictedCashEquiva
 CURRENT_TAGS = ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent"]
 NONCURRENT_TAGS = ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]
 SHORT_TERM_TAGS = ["ShortTermBorrowings", "CommercialPaper"]
-TAGS = ALL_TAGS | set(CURRENT_TAGS + NONCURRENT_TAGS)
+# Used only when neither short-term tag is present: KO tags its balance-sheet
+# "Loans and notes payable" line this way (SCORER_FIXES.md, fix 4). The
+# taxonomy lets this tag include non-current notes, hence fallback only.
+SHORT_TERM_FALLBACK = "NotesAndLoansPayable"
+TAGS = ALL_TAGS | set(CURRENT_TAGS + NONCURRENT_TAGS + [SHORT_TERM_FALLBACK])
 FACTS_CACHE = "xbrl_facts_heldout.json"
 
 COLUMNS = ["ticker", "field", "expected", "got", "match", "xbrl_tag", "xbrl_detail", "period",
@@ -112,6 +119,10 @@ def current_debt(facts, period) -> tuple[float | None, str, str]:
         sv, _ = one(facts, t, period)
         if sv is not None:
             parts[t] = sv
+    if len(parts) == 1:
+        sv, _ = one(facts, SHORT_TERM_FALLBACK, period)
+        if sv is not None:
+            parts[SHORT_TERM_FALLBACK] = sv
     return sum(parts.values()), "+".join(parts), " + ".join(f"{t} {x:,.3f}" for t, x in parts.items())
 
 
@@ -149,7 +160,7 @@ def xbrl_truth(facts: list[dict], period: str) -> dict[str, tuple[float | None, 
 
 
 def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | None = None,
-                 agentic: bool = False) -> list[dict]:
+                 agentic: bool = False, text_only: bool = False) -> list[dict]:
     error = ""
     if saved is not None:
         agent_rows = saved.get(ticker, {})
@@ -158,7 +169,7 @@ def score_ticker(ticker: str, client: anthropic.Anthropic | None, saved: dict | 
         # The agent runs before the cache is read: the agentic agent fetches a
         # new ticker's filings itself.
         try:
-            agent_rows = {r["field"]: r for r in agent_runner(agentic)(ticker, client)}
+            agent_rows = {r["field"]: r for r in agent_runner(agentic, text_only)(ticker, client)}
         except Exception as e:  # one ticker failing shouldn't sink the run
             agent_rows, error = {}, f"{type(e).__name__}: {e}"
     if not filing_dirs(ticker, "10-Q"):
@@ -199,8 +210,10 @@ def main() -> None:
     load_dotenv()
     args = sys.argv[1:]
     rescore, agentic = "--rescore" in args, "--agentic" in args
+    text_only = agentic and "--no-xbrl" in args
     out_name = next((a.split("=", 1)[1] for a in args if a.startswith("--out=")), None)
-    out = HERE / out_name if out_name else (HERE / "heldout_results_agentic.csv" if agentic else OUT)
+    default = "heldout_results_agentic_textonly.csv" if text_only else "heldout_results_agentic.csv"
+    out = HERE / out_name if out_name else (HERE / default if agentic else OUT)
     tickers = [a.upper() for a in args if not a.startswith("--")] or HELD_OUT
     if rescore:
         saved = agent_rows_from_csv(out)
@@ -208,7 +221,8 @@ def main() -> None:
     else:
         client = anthropic.Anthropic()
         with ThreadPoolExecutor(max_workers=len(tickers)) as pool:
-            rows = [r for rs in pool.map(lambda t: score_ticker(t, client, agentic=agentic), tickers) for r in rs]
+            rows = [r for rs in pool.map(lambda t: score_ticker(t, client, agentic=agentic, text_only=text_only),
+                                         tickers) for r in rs]
     with out.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
